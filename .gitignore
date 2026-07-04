@@ -1,0 +1,6 @@
+# artefatti del loop eval di skill-creator, non sorgente
+*-workspace/
+**/iteration-*/
+**/grading.json
+**/benchmark.json
+**/timing.json
