@@ -1,0 +1,71 @@
+{
+  "skill_name": "sage-theme-builder",
+  "evals": [
+    {
+      "id": "phase-0-recon",
+      "prompt": "Sto iniziando un nuovo tema WordPress con Sage per un cliente. Aiutami a partire nel modo giusto.",
+      "expected_output": "Claude esegue una ricognizione del progetto prima di proporre codice: legge composit/package/vite config, identifica lo stack corretto (Vite, Tailwind v4, Acorn) e verifica plugin opzionali, senza assumere Bud o toccare theme.json a mano.",
+      "files": [],
+      "assertions": [
+        "Legge o chiede di leggere composer.json, package.json e vite.config.js prima di generare codice",
+        "Identifica lo stack come Sage 11 con Vite (NON Bud) e Tailwind v4",
+        "Non modifica a mano i design token dentro theme.json e spiega che viene autogenerato dalla config Tailwind",
+        "Verifica a runtime la presenza di plugin opzionali (ACF, SEO) senza renderli dipendenze del tema",
+        "Non introduce dipendenze oltre WordPress e Sage"
+      ]
+    },
+    {
+      "id": "hero-block-native-dynamic",
+      "prompt": "Trasforma questa sezione in un blocco Gutenberg nativo, editabile da back-end, per il mio tema Sage:\n<section class=\"hero\"><h1>Titolo</h1><p>Sottotitolo</p><a href=\"#\">Chiamata all'azione</a></section>",
+      "expected_output": "Un blocco nativo dinamico: block.json apiVersion 3, edit React con controlli, save che ritorna null, render lato server in Blade con Tailwind. Nessun ACF, nessun React sul front-end.",
+      "files": [],
+      "assertions": [
+        "Crea un block.json con apiVersion 3 e attributi tipizzati",
+        "Usa un componente React edit con controlli dell'editor (RichText, InspectorControls o simili) per l'editabilità back-end",
+        "Imposta save che ritorna null (blocco dinamico) e usa render_callback/render.php",
+        "Il render_callback delega a una view Blade tramite \\Roots\\view() e produce markup semantico con classi Tailwind",
+        "NON usa ACF per costruire il blocco",
+        "Non invia React/JS del blocco al front-end (rendering server-side)"
+      ]
+    },
+    {
+      "id": "theme-mu-plugin-boundary",
+      "prompt": "Il blocco hero deve poter mostrare gli ultimi 3 prodotti di un custom post type 'product'. Implementalo nel tema Sage.",
+      "expected_output": "La registrazione del CPT e la query stanno in un mu-plugin; il blocco nel tema consuma i dati e resta presentazione pura.",
+      "files": [],
+      "assertions": [
+        "Registra il custom post type 'product' in un mu-plugin, NON nel tema",
+        "Colloca la query/logica dei prodotti nel mu-plugin (o in un service), non nella view Blade",
+        "Il render_callback o il View Composer del blocco consuma i dati e passa valori semplici alla view",
+        "Motiva la scelta con la regola: se deve sopravvivere a un cambio tema va nel mu-plugin",
+        "Non inserisce register_post_type o business logic in setup.php/functions.php del tema"
+      ]
+    },
+    {
+      "id": "schema-faq-independent",
+      "prompt": "Aggiungi lo structured data schema.org a un blocco FAQ del tema. Uso Yoast ma non voglio che il tema dipenda da lui.",
+      "expected_output": "Il blocco emette JSON-LD FAQPage dalla sua view Blade, sanitizzato e incondizionato; il tema non dipende da Yoast e non tenta di possedere title/description.",
+      "files": [],
+      "assertions": [
+        "Emette JSON-LD di tipo FAQPage dalla view Blade del blocco",
+        "Genera lo schema in modo autonomo, senza agganciarsi alle API di Yoast (nessuna dipendenza dal plugin)",
+        "Sanitizza i valori dinamici (es. wp_strip_all_tags) e codifica con wp_json_encode",
+        "Lascia title, meta description e canonical a WordPress/plugin SEO (non li emette dal tema)",
+        "Il tema resta funzionante con zero plugin attivi"
+      ]
+    },
+    {
+      "id": "design-tokens-tailwind-v4",
+      "prompt": "Ho questa palette dal Figma: brand #1e3a8a, accent #f59e0b, testo #0f172a. Impostala come design system nel tema Sage così anche l'editor a blocchi la eredita.",
+      "expected_output": "I token vanno in @theme dentro resources/css/app.css (Tailwind v4 CSS-first); theme.json NON viene scritto a mano ma autogenerato; nomi di token semantici.",
+      "files": [],
+      "assertions": [
+        "Definisce i token in un blocco @theme dentro resources/css/app.css (Tailwind v4, CSS-first)",
+        "NON scrive a mano i colori dentro theme.json",
+        "Spiega che theme.json/palette dell'editor sono autogenerati dalla config Tailwind al build",
+        "Usa nomi di token semantici (es. --color-brand) invece di letterali (es. --color-blue-700)",
+        "Non usa add_theme_support('editor-color-palette') dato che theme.json è presente"
+      ]
+    }
+  ]
+}
