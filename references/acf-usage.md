@@ -25,11 +25,14 @@ deactivated. Therefore:
 - Simple single meta values → consider native `register_post_meta` + a small meta box; lighter than ACF.
 - Block fields → never; we don't use ACF blocks on this stack.
 
-## How to wire it cleanly
+## How to wire it cleanly — two code-based approaches
 
-**Define fields in PHP** (versionable, code-reviewable) rather than only in the admin UI. Where the
-field group describes a content model that must outlive the theme (CPT meta, options used by logic),
-**register it from the mu-plugin**, not the theme. Theme-only presentational meta can live in the theme.
+Both keep field definitions in the repo (never define-in-admin-only). They differ on **who can edit the
+definitions**, and that — not performance — is the deciding factor.
+
+**A. PHP registration** (`acf_add_local_field_group` on `acf/init`): the definition lives entirely in
+code. Fully dev-controlled, simplest to reason about, but in wp-admin the group shows as registered via
+PHP and is **read-only** — an editor can't change fields from the UI.
 
 ```php
 // In the mu-plugin (content model) — not the theme
@@ -47,11 +50,57 @@ add_action('acf/init', function () {
 });
 ```
 
-**Or use local JSON sync** (`acf-json/` folder) so admin-UI edits are committed to the repo — acceptable
-when a non-dev edits field groups, but keep the JSON in version control.
+**B. Local JSON** (`acf-json/` folder + load/save filters): ACF writes each field group to a JSON file on
+save and loads it from disk. The group stays **editable in wp-admin *and* tracked in git** — it's the
+only way to have automatic, continuous versioning *and* admin editability at the same time. (ACF's manual
+PHP/JSON export exists too, but it's a one-shot dump you'd re-import by hand — strictly worse; ignore it.)
+
+**Choosing between them:**
+- Field definitions must be changeable from the admin (client/editor owns them, or you want fast
+  iteration without a deploy) → **Local JSON**.
+- Fields are purely dev-controlled and must never be touched from admin → **PHP**, simpler, done.
+
+**Performance is not the criterion.** PHP vs Local JSON is a wash — both are "local", both skip the DB for
+the *definitions*. Local JSON's speed win is against groups stored in the DB (the default when you create
+them in admin without JSON), **not** against PHP. In both approaches the *values* (post meta) always live
+in the DB; only the *definitions* are versioned.
+
+### Where the `acf-json/` folder goes
+When the field group backs a content model that must survive a theme switch, keep `acf-json/` **in the
+mu-plugin, not the theme** — same rule as the rest of the content model. Wire the paths **additively** so
+you don't clobber other ACF consumers:
+
+```php
+// In the mu-plugin
+add_filter('acf/settings/load_json', function ($paths) {
+    $paths[] = __DIR__ . '/acf-json';   // append — keep the theme's default path working too
+    return $paths;
+});
+
+// ACF 6.2+: route ONLY your groups to the mu-plugin, leave everyone else on their path
+add_filter('acf/json/save_paths', function ($paths, $post) {
+    if (isset($post['key']) && str_starts_with($post['key'], 'group_myprefix_')) {
+        return [__DIR__ . '/acf-json'];
+    }
+    return $paths;
+}, 10, 2);
+```
+
+Without `save_paths`, ACF saves every group to the last registered path — you'd hijack groups owned by
+other plugins/themes. Prefix your keys (`group_myprefix_…`) and gate on that.
+
+### Local JSON caveats (read before committing to it)
+1. **Two sources of truth**: saving in admin writes both the DB *and* the JSON file.
+2. **Semi-manual sync**: after a `git pull` with newer JSON, ACF shows "Sync available" and you must
+   click it — alignment is by the `modified` timestamp, not automatic.
+3. **Ugly merge conflicts** on large JSON files when two people touch the same group.
+4. **A group can't live in both PHP and JSON** — migrating to JSON means *removing* the PHP registration,
+   or you get duplicates.
+5. **Workflow discipline**: edit fields only in dev, commit the JSON, deploy. Editing field groups in
+   production drifts from the repo and gets overwritten on the next deploy.
 
 **Always guard** with `function_exists('get_field')` / `acf_add_local_field_group` so the site degrades
-gracefully if ACF is ever deactivated.
+gracefully if ACF is ever deactivated — regardless of which approach you pick.
 
 ## Reading ACF in views
 Prepare ACF data in a **View Composer**, then pass plain values to the Blade view — keep `get_field()`
