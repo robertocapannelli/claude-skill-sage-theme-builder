@@ -117,6 +117,20 @@
         "NON applica wp_kses (o wp_kses_post) indiscriminatamente a URL o testo semplice",
         "Motiva la scelta della funzione in base al contesto di output"
       ]
+    },
+    {
+      "id": "acf-local-json-mu-plugin",
+      "prompt": "Voglio i miei campi ACF versionati in git ma anche modificabili dal back-end di WordPress. Come li imposto nel tema Sage?",
+      "expected_output": "Claude sceglie ACF Local JSON con cartella nel mu-plugin, load_json additivo + save_paths mirato (ACF 6.2+), spiega il trade-off vs registrazione PHP (editabilità, non performance) e i caveat di sync/drift, senza rendere ACF una dipendenza hard del tema.",
+      "files": [],
+      "assertions": [
+        "Propone ACF Local JSON (cartella acf-json/ + filtri load/save) come modo per avere campi editabili in admin E versionati in git",
+        "Colloca la cartella acf-json nel mu-plugin, non nel tema, perché il content model deve sopravvivere al cambio tema",
+        "Usa acf/settings/load_json in modo additivo (append) e acf/json/save_paths (ACF 6.2+) per instradare solo i propri gruppi (es. per prefisso di key)",
+        "Chiarisce che la performance PHP vs Local JSON è equivalente e che il criterio di scelta è l'editabilità, non la velocità",
+        "Elenca i contro (doppia fonte DB+JSON, sync manuale dopo il pull, modificare i campi solo in dev) e precisa che i valori restano sempre nel DB",
+        "Mantiene la guardia function_exists('get_field') / degradazione se ACF è disattivato, senza rendere ACF una dipendenza hard del tema"
+      ]
     }
   ]
 }
