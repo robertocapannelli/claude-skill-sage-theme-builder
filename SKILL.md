@@ -10,6 +10,7 @@ description: >-
   Gutenberg", "scaffolda un blocco nativo", "tema WordPress performante con Tailwind", or any work
   that implies the Roots stack (Blade, Acorn, Vite) even when "Sage" is not named explicitly.
   Runs in Claude Code against a real Sage 11 project on disk.
+allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *)
 ---
 
 # Sage Theme Builder
@@ -81,16 +82,23 @@ Decompose the design into reusable Blade components in `resources/views/componen
 sections, nav). Pass data via **View Composers** (`app/View/Composers/`), never query inside views.
 Faithful markup = semantic HTML5 landmarks + Tailwind utilities matching the design tokens.
 
-### Phase 3 — Templates & layouts
-Build the page templates (`index`, `front-page`, `single`, `page`, `archive`, `404`) and layouts
-(`resources/views/layouts/app.blade.php`) by composing the Phase 2 components.
+### Phase 3 — Templates, navigation & layouts
+Build layouts (`resources/views/layouts/app.blade.php`) and page templates by composing Phase 2
+components. This phase specifically owns:
+- **Navigation**: dynamic via WordPress menus (`wp_nav_menu`, 2–3 levels), an admin placeholder when no
+  menu is assigned, and an accessible **offcanvas** mobile menu styled with theme tokens (Tailwind for
+  all visuals, ~a dozen lines of vanilla JS for the toggle). See `references/navigation.md`.
+- **Archives & singles** as Blade templates (never blocks): every archive has a matching single;
+  taxonomy archives may show an optional description. See `references/templates.md`.
+- **404** always present, tone adapted to the site's sector/brand, with a way forward.
 
 ### Phase 4 — Native Gutenberg blocks
 For every editable design section, scaffold a native dynamic block: `block.json` (apiVersion 3),
 React `edit.js` for back-end editing, `save: () => null`, and a Blade view rendered via
-`render_callback`. Document each block (attributes table + README) so editors and future devs
-understand it. Full pattern, Vite wiring, and the static-`save()` alternative:
-`references/native-blocks.md`.
+`render_callback`. Decide **display block vs container block** first (durable content stays in the CPT /
+mu-plugin; the block is a view — home lists loop the real post type and are not editable in the block).
+Document each block (attributes table + README). Full pattern, Vite wiring, escaping, and the
+static-`save()` alternative: `references/native-blocks.md`.
 
 ### Phase 5 — ACF (only where it earns its place)
 Use ACF Pro for post/page meta, options pages, and complex repeaters that aren't block content.
@@ -121,7 +129,9 @@ filter allows turning schema output off per project. See `references/schema-seo.
 |---|---|
 | `references/architecture.md` | Project structure, theme↔mu-plugin boundary, Vite/asset details, what NOT to touch |
 | `references/design-to-blade.md` | Turning Figma/HTML into tokens + Blade components; Tailwind v4 `@theme`; Figma MCP usage |
-| `references/native-blocks.md` | Full native dynamic-block recipe, scaffolding, editor controls, docs conventions, build wiring |
+| `references/navigation.md` | Dynamic WP menus (2–3 levels), no-menu placeholder, accessible offcanvas mobile menu |
+| `references/templates.md` | Blade archives + singles, taxonomy descriptions, home lists from real CPTs, 404 |
+| `references/native-blocks.md` | Full native dynamic-block recipe, display-vs-container blocks, escaping, build wiring |
 | `references/acf-usage.md` | Deciding when ACF Pro is appropriate and how to wire it cleanly |
 | `references/mu-plugins.md` | Scaffolding a project mu-plugin for CPTs, taxonomies, REST, logic |
 | `references/schema-seo.md` | JSON-LD patterns, Yoast coexistence, semantic/performance/LLM rules |
@@ -131,6 +141,10 @@ filter allows turning schema output off per project. See `references/schema-seo.
 - [ ] Design tokens live only in `@theme`; `theme.json` is generated, not hand-edited.
 - [ ] Design reproduced faithfully with semantic Blade components; no logic in views.
 - [ ] Blocks are native, editable in the back end, documented, and render server-side (no front-end React).
+- [ ] All code in English; output escaped by context (`esc_html`/`esc_attr`/`esc_url`/`wp_kses_post`).
+- [ ] Navigation is dynamic (WP menus, 2–3 levels) with a no-menu placeholder and an accessible offcanvas on mobile.
+- [ ] Archives and singles are Blade templates; a 404 exists with sector-appropriate tone.
+- [ ] Durable content lives in the mu-plugin/CPT layer; home lists loop the real post type, not static block copy.
 - [ ] No business logic in the theme; functionality lives in a mu-plugin.
 - [ ] ACF used only where justified, fields versionable.
 - [ ] Theme renders fully with **zero plugins active**; no hard dependency on Yoast, ACF, or anything but WP + Sage.
