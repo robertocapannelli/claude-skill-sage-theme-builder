@@ -66,6 +66,57 @@
         "Usa nomi di token semantici (es. --color-brand) invece di letterali (es. --color-blue-700)",
         "Non usa add_theme_support('editor-color-palette') dato che theme.json è presente"
       ]
+    },
+    {
+      "id": "menu-placeholder",
+      "prompt": "Aggiungi la navigazione principale all'header del tema Sage.",
+      "expected_output": "Menu dinamico via wp_nav_menu su una location registrata; se nessun menu è assegnato, mostra un placeholder visibile solo agli admin che invita ad associare un menu. Nessuna voce hardcodata.",
+      "files": [],
+      "assertions": [
+        "Registra una nav menu location e la stampa con wp_nav_menu (o walker), senza voci hardcodate",
+        "Se has_nav_menu è falso, mostra un placeholder che invita ad assegnare un menu",
+        "Il placeholder è visibile solo a chi può gestire i menu (es. current_user_can('edit_theme_options')), non ai visitatori",
+        "Non inserisce link di menu statici nel markup"
+      ]
+    },
+    {
+      "id": "archive-single-blade",
+      "prompt": "Il cliente ha un custom post type 'servizio'. Crea l'archivio e la pagina di dettaglio nel tema Sage.",
+      "expected_output": "Archivio e single come template Blade (non blocchi); la single mostra dinamici titolo/contenuto/tassonomie/immagine secondo il design; i campi assenti non vengono renderizzati vuoti.",
+      "files": [],
+      "assertions": [
+        "Crea l'archivio come template Blade (es. archive-servizio.blade.php), non come blocco",
+        "Crea la single corrispondente come template Blade (es. single-servizio.blade.php), non a blocchi",
+        "La single espone campi dinamici (titolo, contenuto/descrizione, tassonomie, eventuale immagine)",
+        "Prepara i dati in un View Composer invece di interrogare dentro la view",
+        "Omette i campi non presenti invece di renderizzarli vuoti"
+      ]
+    },
+    {
+      "id": "home-list-from-cpt",
+      "prompt": "In home voglio un carosello con le ultime 6 news. Le news sono un post type dedicato.",
+      "expected_output": "Un blocco display che interroga il post type reale e lo renderizza; il contenuto NON è editabile dal blocco ma solo dal post type; la query vive nel mu-plugin, il blocco la consuma.",
+      "files": [],
+      "assertions": [
+        "Il blocco interroga il post type reale delle news e ne fa il loop (non contenuto statico digitato nel blocco)",
+        "Il contenuto delle news NON è modificabile dagli attributi del blocco, solo dal post type",
+        "Gli attributi del blocco sono solo di presentazione (es. numero elementi, categoria)",
+        "La query/servizio dati sta nel mu-plugin e il render_callback la consuma passando dati semplici alla Blade",
+        "Non duplica i dati delle news dentro post_content del blocco"
+      ]
+    },
+    {
+      "id": "context-escaping",
+      "prompt": "Rivedi l'output di questo blocco Blade: stampa un titolo RichText, un link CTA con URL e un attributo alt. Assicurati che l'escaping sia corretto.",
+      "expected_output": "Escaping per contesto: wp_kses_post per il RichText (HTML limitato), esc_url per l'URL, esc_attr per gli attributi, esc_html/{{ }} per il testo semplice. Non usa wp_kses ovunque.",
+      "files": [],
+      "assertions": [
+        "Usa wp_kses_post solo per il campo RichText dove serve HTML limitato",
+        "Usa esc_url per l'URL della CTA",
+        "Usa esc_attr per i valori di attributo (es. alt) e esc_html/{{ }} per il testo semplice",
+        "NON applica wp_kses (o wp_kses_post) indiscriminatamente a URL o testo semplice",
+        "Motiva la scelta della funzione in base al contesto di output"
+      ]
     }
   ]
 }
