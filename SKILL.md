@@ -101,8 +101,10 @@ Document each block (attributes table + README). Full pattern, Vite wiring, esca
 static-`save()` alternative: `references/native-blocks.md`.
 
 ### Phase 5 — ACF (only where it earns its place)
-Use ACF Pro for post/page meta, options pages, and complex repeaters that aren't block content.
-Prefer PHP-defined field groups (versionable) or local JSON sync. See `references/acf-usage.md`.
+Use ACF Pro for post/page meta, options pages, and complex repeaters that aren't block content. Keep
+definitions in code: **PHP registration** when fields are dev-only, **Local JSON** (folder in the
+mu-plugin) when they must stay editable in admin *and* versioned — editability, not performance, is the
+criterion. See `references/acf-usage.md`.
 
 ### Phase 6 — mu-plugin for functionality
 Anything beyond presentation goes here: register CPTs/taxonomies, REST endpoints, business logic,
