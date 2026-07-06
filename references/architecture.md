@@ -45,13 +45,28 @@ Decide with one question: **"Would this still need to exist if the client switch
 | Block **registration + edit.js + Blade render** | Theme | Design-coupled presentation of THIS site |
 | Asset enqueuing | Theme | Presentation |
 | Custom Post Types, taxonomies | **mu-plugin** | Content model must outlive the theme |
+| **Durable content** (options, ACF fields, CPT entries) | **mu-plugin** | Data must not orphan on a theme switch |
 | Custom REST endpoints / WP-CLI commands | **mu-plugin** | Functionality |
 | Third-party API clients, webhooks, cron | **mu-plugin** | Business logic |
-| Data a block needs (e.g. "latest products") | **mu-plugin** exposes it; block consumes | Keeps view dumb |
+| Data a block displays (e.g. "latest products") | **mu-plugin** owns the data; block is a view | Keeps the block a dumb window onto durable data |
 
-Grey area — **block that needs queried data**: register and render the block in the theme, but put the
-query/service in the mu-plugin and call it from the block's `render_callback`/View Composer. The block
-stays a thin presentation layer.
+**The durable-content rule (decides where a block's content lives).** A dynamic block stores its typed
+content in attributes inside `post_content`. That content is therefore coupled to the block's
+registration — deregister the block (theme switch) and it orphans. So:
+
+- **Display blocks** (a carousel of latest news, a product grid): the real data lives in a CPT, already
+  theme-independent. The block only *queries and renders* it — content is edited in the CPT, never in
+  the block. Registering these in the theme is fine; switching themes loses the view, not the data.
+- **Container blocks** (hero heading, CTA copy): the attributes *are* the data. If that content must
+  survive a theme switch, it doesn't belong in the block — put it in ACF/options/a CPT (mu-plugin) and
+  let the block display it. If it's presentational copy you'd redo in a redesign anyway, accept the
+  theme coupling.
+
+Rule of thumb: **durable content lives in the mu-plugin layer; blocks are windows onto it.** Don't try
+to "make blocks independent" by moving their registration to the mu-plugin while rendering through
+`\Roots\view()` — Blade rendering still dies on a non-Sage theme, so the independence is illusory. (A
+genuinely standalone-durable block needs mu-plugin registration *and* autonomous PHP rendering; that
+heavy pattern is documented in `native-blocks.md` as an exception, not the default.)
 
 ## Vite & asset essentials
 
@@ -64,7 +79,29 @@ stays a thin presentation layer.
 - `npm run dev` gives HMR (including in the iframed block editor via the injected Vite client); `npm
   run build` produces production assets and regenerates `theme.json`.
 
-## What NOT to touch
+## Conventions
+
+- **All code, comments, identifiers, and commit messages in English.** UI-facing strings are
+  translatable (`__()`, `_e()`); everything in the codebase is English regardless of the client's language.
+- **Output escaping is context-driven — there is no one-size function.** Escape at the point of output:
+  - Plain text → `esc_html()` (Blade `{{ }}` already does this).
+  - HTML attributes → `esc_attr()`.
+  - URLs → `esc_url()`.
+  - Content where limited HTML is intentional (RichText block fields: bold, links, lists) →
+    `wp_kses_post()`, used with Blade raw echo: `{!! wp_kses_post($value) !!}`.
+
+  `wp_kses_post()` is the right tool *only* for the last case, and it's the most expensive — using it on
+  URLs or plain text is both wasteful and less safe (wrong escaping for the context). Match the function
+  to the sink.
+
+## Environment is out of scope
+
+This skill assumes a working WordPress install with the `wp` CLI available. It does **not** manage the
+local dev environment — starting Devilbox/DDEV/Local/Valet, containers, or hosts. That's infrastructure,
+deliberately kept out so the skill stays tech-stack-agnostic. If environment bootstrapping is needed,
+it belongs in a separate, dedicated skill, not here.
+
+
 
 - Don't hand-edit `theme.json` design tokens — edit `@theme` in `app.css` and rebuild.
 - Don't call `add_theme_support('editor-color-palette' | 'editor-font-sizes' | ...)` — ignored when
