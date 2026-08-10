@@ -4,65 +4,187 @@
     {
       "id": "phase-0-recon",
       "prompt": "Sto iniziando un nuovo tema WordPress con Sage per un cliente. Aiutami a partire nel modo giusto.",
-      "expected_output": "Claude esegue una ricognizione del progetto prima di proporre codice: legge composit/package/vite config, identifica lo stack corretto (Vite, Tailwind v4, Acorn) e verifica plugin opzionali, senza assumere Bud o toccare theme.json a mano.",
+      "expected_output": "Claude esegue una ricognizione del progetto prima di proporre codice: legge composer/package/vite config, identifica lo stack corretto (Vite + wp-scripts, Tailwind v4, Acorn) e verifica plugin opzionali, senza assumere Bud o toccare theme.json a mano.",
       "files": [],
       "assertions": [
         "Legge o chiede di leggere composer.json, package.json e vite.config.js prima di generare codice",
         "Identifica lo stack come Sage 11 con Vite (NON Bud) e Tailwind v4",
+        "Riconosce dal package.json se i blocchi dell'editor sono costruiti da @wordpress/scripts accanto a Vite",
         "Non modifica a mano i design token dentro theme.json e spiega che viene autogenerato dalla config Tailwind",
         "Verifica a runtime la presenza di plugin opzionali (ACF, SEO) senza renderli dipendenze del tema",
         "Non introduce dipendenze oltre WordPress e Sage"
       ]
     },
     {
-      "id": "hero-block-native-dynamic",
+      "id": "block-render-php-default",
       "prompt": "Trasforma questa sezione in un blocco Gutenberg nativo, editabile da back-end, per il mio tema Sage:\n<section class=\"hero\"><h1>Titolo</h1><p>Sottotitolo</p><a href=\"#\">Chiamata all'azione</a></section>",
-      "expected_output": "Un blocco nativo dinamico: block.json apiVersion 3, edit React con controlli, save che ritorna null, render lato server in Blade con Tailwind. Nessun ACF, nessun React sul front-end.",
+      "expected_output": "Un blocco nativo dinamico nel pattern collaudato: cartella resources/blocks/<nome>/ con block.json (apiVersion 3) e render.php server-side, UI editor nel bundle wp-scripts, save che ritorna null. Nessun ACF, nessun React sul front end.",
       "files": [],
       "assertions": [
-        "Crea un block.json con apiVersion 3 e attributi tipizzati",
-        "Usa un componente React edit con controlli dell'editor (RichText, InspectorControls o simili) per l'editabilità back-end",
-        "Imposta save che ritorna null (blocco dinamico) e usa render_callback/render.php",
-        "Il render_callback delega a una view Blade tramite \\Roots\\view() e produce markup semantico con classi Tailwind",
-        "NON usa ACF per costruire il blocco",
-        "Non invia React/JS del blocco al front-end (rendering server-side)"
+        "Crea resources/blocks/<nome>/block.json con apiVersion 3, attributi tipizzati e \"render\": \"file:./render.php\"",
+        "Scrive il render server-side in render.php (PHP), non in una view Blade, salvo che il progetto usi già Blade per i blocchi",
+        "Usa get_block_wrapper_attributes() sull'elemento più esterno",
+        "Mette la UI dell'editor in resources/js/blocks/<nome>/index.js importando lo stesso block.json, con save() che ritorna null",
+        "Non aggiunge il blocco a una lista PHP: si affida al glob() di auto-registrazione (o lo introduce se manca)",
+        "NON usa ACF per costruire il blocco e non invia React al front end",
+        "Applica l'escaping per contesto (wp_kses_post solo dove serve HTML limitato, esc_url per gli URL, esc_attr per gli attributi)"
+      ]
+    },
+    {
+      "id": "single-editor-bundle",
+      "prompt": "Nel mio tema Sage l'editor a blocchi si rompe con 'wp is not defined' quando aggiungo un blocco nuovo. Come devo registrare gli script dei blocchi?",
+      "expected_output": "Un solo handle editor registrato dalle dipendenze calcolate da wp-scripts (index.asset.php), referenziato da ogni block.json; niente dipendenze wp-* scritte a mano.",
+      "files": [],
+      "assertions": [
+        "Registra un unico handle per il bundle editor leggendo dependencies e version da public/blocks/index.asset.php",
+        "Fa puntare editorScript di ogni block.json a quell'handle invece che a un file per blocco",
+        "Non elenca a mano le dipendenze wp-*",
+        "Guarda l'esistenza del file asset prima di registrare, così il tema si avvia anche senza build",
+        "Ricorda che ogni blocco va importato in resources/js/blocks/index.js perché webpack ha un entry statico"
+      ]
+    },
+    {
+      "id": "editor-canvas-parity",
+      "prompt": "Le anteprime dei blocchi nell'editor non assomigliano al front end: font diverso, alcune utility mancano e il testo dei bottoni bianchi è invisibile. Come allineo il CSS del canvas nel mio tema Sage?",
+      "expected_output": "Iniettare il foglio di stile del front end nel canvas via block_editor_settings_all come @import url() grezzo, e ridurre editor.css ai soli shim. Mai copiare regole di app.css dentro editor.css.",
+      "files": [],
+      "assertions": [
+        "Inietta app.css nel canvas tramite block_editor_settings_all usando un @import url() con l'URL buildato",
+        "Spiega che transform_styles() non sa prefissare un @import, quindi il file arriva nell'iframe invariato",
+        "Dice esplicitamente di NON copiare regole del front end dentro editor.css, che resta solo shim",
+        "Attribuisce il testo invisibile a una regola unlayered che batte @layer utilities (cascade layers, non specificità)",
+        "Non risolve con !important"
+      ]
+    },
+    {
+      "id": "prose-wrapper-filter",
+      "prompt": "Sul front end avvolgo il contenuto editoriale in .entry-content, ma nel canvas dell'editor i blocchi core escono senza gli stili di prosa. Come lo sistemo?",
+      "expected_output": "Un filtro editor.BlockListBlock che AVVOLGE i blocchi non-tema in un div.entry-content, non una className sul blocco, con il perché.",
+      "files": [],
+      "assertions": [
+        "Usa il filtro editor.BlockListBlock",
+        "Avvolge il blocco in un elemento con la classe di prosa invece di passare className",
+        "Spiega che nel canvas un blocco È il suo elemento, quindi className produce h2.entry-content e le regole discendenti smettono di matchare",
+        "Nota che il paragrafo continua a sembrare corretto, ed è per questo che l'errore passa inosservato",
+        "Applica il wrapper solo ai blocchi che non appartengono al namespace del tema"
+      ]
+    },
+    {
+      "id": "meta-custom-fields-support",
+      "prompt": "Ho un CPT 'libro' in un mu-plugin e un pannello sidebar con useEntityProp per due campi. Le meta sono registrate con register_post_meta e show_in_rest, il pannello si vede e posso scrivere, ma al salvataggio i valori spariscono senza nessun errore.",
+      "expected_output": "La causa è 'custom-fields' mancante nei supports del CPT: senza, lo schema REST non ha la property meta e le scritture vengono scartate in silenzio. Con la diagnosi via OPTIONS.",
+      "files": [],
+      "assertions": [
+        "Indica come causa principale l'assenza di 'custom-fields' nei supports del post type",
+        "Spiega che è quel supporto ad aggiungere la property meta allo schema REST e che senza di esso le scritture vengono scartate in silenzio",
+        "Propone la diagnosi con rest_do_request su OPTIONS /wp/v2/<tipo> controllando schema.properties.meta",
+        "Ricorda che servono tutte e tre le cose: show_in_rest sul tipo, show_in_rest sulla meta e custom-fields nei supports",
+        "Suggerisce di asserirlo in un test di integrazione"
+      ]
+    },
+    {
+      "id": "repeater-array-meta",
+      "prompt": "Ho bisogno di un elenco ordinabile di statistiche (valore, suffisso, etichetta) su un CPT del mio progetto Sage. Con ACF sarebbe un repeater. Come lo faccio senza ACF?",
+      "expected_output": "Una sola meta di tipo array con schema JSON completo in show_in_rest, editata da un pannello sidebar con riordino; niente meta piatte numerate, niente ACF.",
+      "files": [],
+      "assertions": [
+        "Registra una singola meta di tipo array invece di più meta piatte numerate",
+        "Passa show_in_rest come array con uno schema esplicito (items/type/properties), spiegando che REST rifiuta array e object senza schema",
+        "Tipizza i campi numerici come number nello schema",
+        "Costruisce la UI con PluginDocumentSettingPanel e useEntityProp, aggiornando la meta con lo spread dell'intero oggetto",
+        "Non propone ACF né un plugin di terze parti",
+        "Se sostituisce meta preesistenti, riconosce che serve uno script di migrazione"
+      ]
+    },
+    {
+      "id": "block-rename-migration",
+      "prompt": "Voglio rinominare il blocco nativo mytheme/white-label in mytheme/split-stats e cambiare due dei suoi default. È già usato sulla home pubblicata e su due pagine servizio.",
+      "expected_output": "Riconosce che è una migrazione di database, congela i vecchi default negli attributi prima di cambiarli, riscrive il singolo delimitatore con serialize_block_attributes(), tratta a parte le revisioni, offre --dry-run ed è idempotente. Da lanciare su ogni ambiente.",
+      "files": [],
+      "assertions": [
+        "Dice che rinominare non basta: post_content va migrato, e che per i blocchi dinamici non esiste alias o deprecation",
+        "Congela i vecchi default negli attributi delle istanze esistenti PRIMA di cambiare block.json, spiegando che un blocco salvato senza attributi eredita i default a ogni render",
+        "Usa una regex sul singolo commento di blocco invece di parse_blocks() + serialize_blocks() sull'intero post",
+        "Riscrive gli attributi con serialize_block_attributes() e NON con wp_json_encode()",
+        "Gestisce le revisioni su un percorso di scrittura dedicato (o motiva l'uso di $wpdb->update ovunque)",
+        "Lo script è idempotente, ha --dry-run e va lanciato una volta per ogni ambiente"
+      ]
+    },
+    {
+      "id": "tailwind-static-editorial-html",
+      "prompt": "Nel campo 'Titolo (HTML)' di un mio blocco scrivo <span class=\"text-accent\">parola</span>, ma sul sito la classe non ha nessun effetto. In altre parti del tema text-accent funziona.",
+      "expected_output": "Tailwind non scansiona mai gli attributi serializzati dei blocchi: serve theme(static)/@theme static, più le @source verso i template PHP.",
+      "files": [],
+      "assertions": [
+        "Attribuisce il problema al fatto che Tailwind non scansiona l'HTML salvato negli attributi del blocco",
+        "Propone @import \"tailwindcss\" theme(static) e/o @theme static",
+        "Verifica che le direttive @source includano i template PHP dei blocchi e app/",
+        "Non risolve con una safelist di classi scritta a mano né con CSS custom duplicato",
+        "Non modifica a mano theme.json"
+      ]
+    },
+    {
+      "id": "make-json-no-purge",
+      "prompt": "Le traduzioni delle etichette dei pannelli dell'editor sono sparite dopo l'ultima build del mio tema Sage, e i file .json in resources/lang sono vuoti.",
+      "expected_output": "Le due trappole: make-json senza --no-purge svuota il .po, e un bundle editor unico ha bisogno di un catalogo unito servito da load_script_translation_file, tenendo fuori le voci [\"\"].",
+      "files": [],
+      "assertions": [
+        "Individua make-json senza --no-purge come causa dello svuotamento del .po e quindi dei .json",
+        "Spiega che i .json per-sorgente hanno l'hash del percorso del sorgente e non corrispondono all'handle del bundle unico",
+        "Propone wp_set_script_translations più un filtro load_script_translation_file verso un catalogo unito",
+        "Precisa che nell'unione vanno tenute solo le voci con traduzione vera, perché [\"\"] non fa da fallback e rende l'etichetta vuota",
+        "Ricorda che --include del make-pot deve coprire theme.json, patterns, app e resources"
+      ]
+    },
+    {
+      "id": "test-question-explicit",
+      "prompt": "Ho aggiunto al mio tema Sage una funzione che, dati gli attributi di un blocco, sceglie l'immagine da mostrare: quella impostata a mano se c'è, altrimenti quella in evidenza del post collegato, altrimenti niente. Ho finito?",
+      "expected_output": "Risponde esplicitamente alla domanda 'serve un test?', dice sì perché la funzione ha rami e una precedenza fra sorgenti, e sceglie il livello giusto (unit se logica pura, integration se tocca query o render).",
+      "files": [],
+      "assertions": [
+        "Pone e risponde esplicitamente alla domanda se serva un test, invece di dichiarare finito il lavoro",
+        "Motiva il sì con la presenza di rami e di una precedenza fra sorgenti",
+        "Sceglie il livello: unit per logica pura, integration se la funzione interroga o renderizza",
+        "Elenca i casi da coprire, incluso il ramo in cui non c'è nessuna immagine",
+        "Non propone un test che riscrive l'implementazione riga per riga"
       ]
     },
     {
       "id": "theme-mu-plugin-boundary",
       "prompt": "Il blocco hero deve poter mostrare gli ultimi 3 prodotti di un custom post type 'product'. Implementalo nel tema Sage.",
-      "expected_output": "La registrazione del CPT e la query stanno in un mu-plugin; il blocco nel tema consuma i dati e resta presentazione pura.",
+      "expected_output": "La registrazione del CPT e i suoi meta stanno in un mu-plugin; il blocco nel tema interroga e renderizza, restando presentazione pura.",
       "files": [],
       "assertions": [
         "Registra il custom post type 'product' in un mu-plugin, NON nel tema",
-        "Colloca la query/logica dei prodotti nel mu-plugin (o in un service), non nella view Blade",
-        "Il render_callback o il View Composer del blocco consuma i dati e passa valori semplici alla view",
+        "Tiene la query fuori dalla view: nel render del blocco o in un servizio, mai dentro una Blade",
         "Motiva la scelta con la regola: se deve sopravvivere a un cambio tema va nel mu-plugin",
+        "Espone come attributi del blocco solo controlli di presentazione (quanti elementi, quale categoria), non il contenuto dei prodotti",
         "Non inserisce register_post_type o business logic in setup.php/functions.php del tema"
       ]
     },
     {
       "id": "schema-faq-independent",
       "prompt": "Aggiungi lo structured data schema.org a un blocco FAQ del tema. Uso Yoast ma non voglio che il tema dipenda da lui.",
-      "expected_output": "Il blocco emette JSON-LD FAQPage dalla sua view Blade, sanitizzato e incondizionato; il tema non dipende da Yoast e non tenta di possedere title/description.",
+      "expected_output": "Il blocco emette JSON-LD FAQPage dal proprio render, sanitizzato e incondizionato; il tema non dipende dal plugin SEO e non tenta di possedere title/description.",
       "files": [],
       "assertions": [
-        "Emette JSON-LD di tipo FAQPage dalla view Blade del blocco",
-        "Genera lo schema in modo autonomo, senza agganciarsi alle API di Yoast (nessuna dipendenza dal plugin)",
+        "Emette JSON-LD di tipo FAQPage dal render del blocco",
+        "Genera lo schema in modo autonomo, senza agganciarsi alle API del plugin SEO",
+        "Salta le coppie incomplete con lo stesso criterio usato dal markup, così i due non divergono",
         "Sanitizza i valori dinamici (es. wp_strip_all_tags) e codifica con wp_json_encode",
-        "Lascia title, meta description e canonical a WordPress/plugin SEO (non li emette dal tema)",
+        "Lascia title, meta description e canonical a WordPress/plugin SEO",
         "Il tema resta funzionante con zero plugin attivi"
       ]
     },
     {
       "id": "design-tokens-tailwind-v4",
       "prompt": "Ho questa palette dal Figma: brand #1e3a8a, accent #f59e0b, testo #0f172a. Impostala come design system nel tema Sage così anche l'editor a blocchi la eredita.",
-      "expected_output": "I token vanno in @theme dentro resources/css/app.css (Tailwind v4 CSS-first); theme.json NON viene scritto a mano ma autogenerato; nomi di token semantici.",
+      "expected_output": "I token vanno in @theme (file tokens.css importato dall'entry); theme.json NON viene scritto a mano ma autogenerato; nomi di token semantici.",
       "files": [],
       "assertions": [
-        "Definisce i token in un blocco @theme dentro resources/css/app.css (Tailwind v4, CSS-first)",
+        "Definisce i token in un blocco @theme, in un file dedicato importato dall'entry Tailwind",
         "NON scrive a mano i colori dentro theme.json",
-        "Spiega che theme.json/palette dell'editor sono autogenerati dalla config Tailwind al build",
+        "Spiega che theme.json e la palette dell'editor sono autogenerati dalla config Tailwind al build",
         "Usa nomi di token semantici (es. --color-brand) invece di letterali (es. --color-blue-700)",
         "Non usa add_theme_support('editor-color-palette') dato che theme.json è presente"
       ]
@@ -70,10 +192,10 @@
     {
       "id": "menu-placeholder",
       "prompt": "Aggiungi la navigazione principale all'header del tema Sage.",
-      "expected_output": "Menu dinamico via wp_nav_menu su una location registrata; se nessun menu è assegnato, mostra un placeholder visibile solo agli admin che invita ad associare un menu. Nessuna voce hardcodata.",
+      "expected_output": "Menu dinamico su una location registrata; se nessun menu è assegnato, mostra un placeholder visibile solo agli admin. Nessuna voce hardcodata.",
       "files": [],
       "assertions": [
-        "Registra una nav menu location e la stampa con wp_nav_menu (o walker), senza voci hardcodate",
+        "Registra una nav menu location e la stampa dinamicamente, senza voci hardcodate",
         "Se has_nav_menu è falso, mostra un placeholder che invita ad assegnare un menu",
         "Il placeholder è visibile solo a chi può gestire i menu (es. current_user_can('edit_theme_options')), non ai visitatori",
         "Non inserisce link di menu statici nel markup"
@@ -86,7 +208,7 @@
       "files": [],
       "assertions": [
         "Crea l'archivio come template Blade (es. archive-servizio.blade.php), non come blocco",
-        "Crea la single corrispondente come template Blade (es. single-servizio.blade.php), non a blocchi",
+        "Crea la single corrispondente come template Blade, non a blocchi",
         "La single espone campi dinamici (titolo, contenuto/descrizione, tassonomie, eventuale immagine)",
         "Prepara i dati in un View Composer invece di interrogare dentro la view",
         "Omette i campi non presenti invece di renderizzarli vuoti"
@@ -95,41 +217,54 @@
     {
       "id": "home-list-from-cpt",
       "prompt": "In home voglio un carosello con le ultime 6 news. Le news sono un post type dedicato.",
-      "expected_output": "Un blocco display che interroga il post type reale e lo renderizza; il contenuto NON è editabile dal blocco ma solo dal post type; la query vive nel mu-plugin, il blocco la consuma.",
+      "expected_output": "Un blocco display che interroga il post type reale e lo renderizza; il contenuto NON è editabile dal blocco ma solo dal post type.",
       "files": [],
       "assertions": [
         "Il blocco interroga il post type reale delle news e ne fa il loop (non contenuto statico digitato nel blocco)",
         "Il contenuto delle news NON è modificabile dagli attributi del blocco, solo dal post type",
         "Gli attributi del blocco sono solo di presentazione (es. numero elementi, categoria)",
-        "La query/servizio dati sta nel mu-plugin e il render_callback la consuma passando dati semplici alla Blade",
+        "La query sta nel mu-plugin o nel render del blocco, e la view riceve dati semplici",
         "Non duplica i dati delle news dentro post_content del blocco"
       ]
     },
     {
       "id": "context-escaping",
-      "prompt": "Rivedi l'output di questo blocco Blade: stampa un titolo RichText, un link CTA con URL e un attributo alt. Assicurati che l'escaping sia corretto.",
-      "expected_output": "Escaping per contesto: wp_kses_post per il RichText (HTML limitato), esc_url per l'URL, esc_attr per gli attributi, esc_html/{{ }} per il testo semplice. Non usa wp_kses ovunque.",
+      "prompt": "Rivedi l'output di questo blocco: stampa un titolo RichText, un link CTA con URL e un attributo alt. Assicurati che l'escaping sia corretto.",
+      "expected_output": "Escaping per contesto: wp_kses_post per il RichText, esc_url per l'URL, esc_attr per gli attributi, esc_html per il testo semplice. Non usa wp_kses ovunque.",
       "files": [],
       "assertions": [
         "Usa wp_kses_post solo per il campo RichText dove serve HTML limitato",
         "Usa esc_url per l'URL della CTA",
-        "Usa esc_attr per i valori di attributo (es. alt) e esc_html/{{ }} per il testo semplice",
+        "Usa esc_attr per i valori di attributo (es. alt) e esc_html per il testo semplice",
         "NON applica wp_kses (o wp_kses_post) indiscriminatamente a URL o testo semplice",
         "Motiva la scelta della funzione in base al contesto di output"
       ]
     },
     {
-      "id": "acf-local-json-mu-plugin",
-      "prompt": "Voglio i miei campi ACF versionati in git ma anche modificabili dal back-end di WordPress. Come li imposto nel tema Sage?",
-      "expected_output": "Claude sceglie ACF Local JSON con cartella nel mu-plugin, load_json additivo + save_paths mirato (ACF 6.2+), spiega il trade-off vs registrazione PHP (editabilità, non performance) e i caveat di sync/drift, senza rendere ACF una dipendenza hard del tema.",
+      "id": "optional-plugin-degradation",
+      "prompt": "Il blocco 'contatti' del mio tema mostra un form del plugin Contact Form 7. Cosa deve succedere se CF7 non è installato?",
+      "expected_output": "Il blocco non rende niente — nessuna sezione a metà — con una catena di fallback per risolvere l'ID e un test che lo verifica. Il plugin non diventa una dipendenza.",
       "files": [],
       "assertions": [
-        "Propone ACF Local JSON (cartella acf-json/ + filtri load/save) come modo per avere campi editabili in admin E versionati in git",
-        "Colloca la cartella acf-json nel mu-plugin, non nel tema, perché il content model deve sopravvivere al cambio tema",
-        "Usa acf/settings/load_json in modo additivo (append) e acf/json/save_paths (ACF 6.2+) per instradare solo i propri gruppi (es. per prefisso di key)",
-        "Chiarisce che la performance PHP vs Local JSON è equivalente e che il criterio di scelta è l'editabilità, non la velocità",
-        "Elenca i contro (doppia fonte DB+JSON, sync manuale dopo il pull, modificare i campi solo in dev) e precisa che i valori restano sempre nel DB",
-        "Mantiene la guardia function_exists('get_field') / degradazione se ACF è disattivato, senza rendere ACF una dipendenza hard del tema"
+        "Il blocco rende stringa vuota quando il plugin manca, non una card o una sezione vuota",
+        "Risolve l'ID del form con una catena di fallback (attributo dell'inspector, poi mappa salvata, poi eventuale chiave legacy)",
+        "Guarda l'esistenza del plugin a runtime (function_exists/shortcode_exists) invece di assumerla",
+        "Propone un test che asserisce l'output vuoto senza il plugin, ed esenta il blocco dall'asserzione 'ogni blocco produce markup'",
+        "Non rende il plugin una dipendenza hard del tema"
+      ]
+    },
+    {
+      "id": "acf-local-json-mu-plugin",
+      "prompt": "Voglio i miei campi ACF versionati in git ma anche modificabili dal back-end di WordPress. Come li imposto nel tema Sage?",
+      "expected_output": "Claude prima verifica se ACF serve davvero (le meta native coprono il caso), e se il progetto ci resta sceglie Local JSON con cartella nel mu-plugin, load_json additivo + save_paths mirato, spiegando i trade-off.",
+      "files": [],
+      "assertions": [
+        "Verifica se il caso d'uso è già coperto da register_post_meta + pannello sidebar nativo prima di consigliare ACF",
+        "Se resta su ACF, propone Local JSON come modo per avere campi editabili in admin E versionati in git",
+        "Colloca la cartella acf-json nel mu-plugin, non nel tema",
+        "Usa acf/settings/load_json in modo additivo e acf/json/save_paths per instradare solo i propri gruppi",
+        "Chiarisce che il criterio di scelta fra PHP e Local JSON è l'editabilità, non la performance",
+        "Mantiene la guardia function_exists('get_field') senza rendere ACF una dipendenza hard"
       ]
     }
   ]
