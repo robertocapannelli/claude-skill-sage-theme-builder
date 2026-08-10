@@ -1,7 +1,17 @@
 # ACF Pro — when and how
 
-ACF Pro is available, but **not for building Gutenberg blocks** (those are native — see
-`references/native-blocks.md`). Use ACF where it's genuinely the lighter, cleaner tool.
+**Start here: on this stack you probably don't need ACF at all.** Typed meta, repeaters, an options
+page and a good editing UI are all native — `register_post_meta()` with a REST schema,
+`PluginDocumentSettingPanel`, and the Settings API. That path is documented end to end in
+`references/post-meta-and-settings.md`, it costs no plugin dependency, no licence, and no
+`field_xxxxx` keys in the database. A full production theme was migrated off ACF this way with the
+meta keys unchanged, so no data moved.
+
+This file remains for two situations: a project that **already** has ACF and is not migrating, and the
+migration itself (bottom of the page).
+
+ACF is never used for building Gutenberg blocks (those are native — see
+`references/native-blocks.md`). Where it does stay, use it because it is genuinely the lighter tool.
 
 ## Independence first (principle 0)
 ACF is an **optional enhancer**, never a theme dependency. The theme must render correctly with ACF
@@ -101,6 +111,27 @@ other plugins/themes. Prefix your keys (`group_myprefix_…`) and gate on that.
 
 **Always guard** with `function_exists('get_field')` / `acf_add_local_field_group` so the site degrades
 gracefully if ACF is ever deactivated — regardless of which approach you pick.
+
+## Getting off ACF
+
+The migration is smaller than it looks, because **the values are ordinary post meta and options** —
+they never move. What moves is the *definitions* and the *editing UI*.
+
+1. **Re-register the same keys natively.** `register_post_meta()` on the exact keys ACF used, matching
+   its storage conventions (an ACF `true_false` serialises `'1'` / `''` — keep that, or existing rows
+   stop matching). Existing content then works with no data migration at all.
+2. **Rebuild the editing UI** as sidebar panels and a Settings API page
+   (`post-meta-and-settings.md`). This is where the actual work is.
+3. **Repeaters change shape**, and only these need a migration script: flat `field_0_url`,
+   `field_1_url` rows become one array meta (`content-migrations.md`). Leave the legacy rows in place
+   as a safety copy and delete them by hand later.
+4. **Retire the field groups** with an idempotent, `--dry-run`-able script that moves them to the
+   trash — do not delete. Legacy JSON exports can stay in the repository, unloaded: an inactive theme
+   never re-syncs them.
+5. **Remove every `acf/settings/*` filter** and assert their absence in a test, so nothing silently
+   re-registers a path later.
+6. Run the whole thing **per environment**, and track which environments are done. If the old theme is
+   still live somewhere and still needs ACF, that environment keeps the plugin until it is switched.
 
 ## Reading ACF in views
 Prepare ACF data in a **View Composer**, then pass plain values to the Blade view — keep `get_field()`

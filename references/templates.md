@@ -80,6 +80,30 @@ uses a **dynamic display block that loops the actual CPT** — see the "display 
 The block exposes presentation controls at most (how many to show, which category), never the item copy.
 This guarantees one source of truth and no divergence between the home teaser and the archive.
 
+## Composed pages vs prose pages
+
+A page template must decide which of two things it is rendering, because the two need opposite
+treatment:
+
+```blade
+{{-- resources/views/page.blade.php --}}
+@php($isComposed = collect(parse_blocks(get_the_content()))
+        ->contains(fn ($b) => str_starts_with((string) ($b['blockName'] ?? ''), 'mytheme/')))
+
+@if ($isComposed)
+    @php(the_content())                        {{-- sections are full-bleed and cap themselves --}}
+@else
+    <article class="mx-auto max-w-3xl">
+        <div class="entry-content">@php(the_content())</div>
+    </article>
+@endif
+```
+
+That wrapper is what keeps the ~100 prose rules (`.entry-content h2`, lists, quotes, links) away from
+your sections — without it, a prose link rule will happily repaint a CTA inside a hero. The block
+editor has no equivalent separation and needs the JS counterpart described in
+`block-editor-parity.md`.
+
 ## 404 (always present)
 
 Ship a `404.blade.php`. Its **tone adapts to the site's sector/brand** — the skill infers it from the

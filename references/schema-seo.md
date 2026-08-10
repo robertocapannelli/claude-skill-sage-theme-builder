@@ -77,23 +77,42 @@ function theme_schema_organization(): array
 - **Block-level** (`FAQPage` from an FAQ block, `HowTo` from a steps block) → emitted by the block's
   Blade view, so schema travels with the block.
 
-```blade
-{{-- inside an FAQ block Blade view --}}
-@php
-  $ld = [
-    '@context' => 'https://schema.org',
-    '@type'    => 'FAQPage',
-    'mainEntity' => collect($items)->map(fn ($i) => [
-      '@type' => 'Question',
-      'name'  => wp_strip_all_tags($i['q']),
-      'acceptedAnswer' => ['@type' => 'Answer', 'text' => wp_strip_all_tags($i['a'])],
-    ])->all(),
-  ];
-@endphp
-<script type="application/ld+json">{!! wp_json_encode($ld, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
+```php
+<?php
+// inside resources/blocks/faq/render.php — the block's schema travels with the block
+$schema = [];
+
+foreach ($items as $item) {
+    if (empty($item['q'])) {
+        continue;                       // the same predicate the accordion uses: they must agree
+    }
+
+    $schema[] = [
+        '@type'          => 'Question',
+        'name'           => wp_strip_all_tags($item['q']),
+        'acceptedAnswer' => ['@type' => 'Answer', 'text' => wp_strip_all_tags($item['a'] ?? '')],
+    ];
+}
+?>
+<?php if ($schema) : ?>
+  <script type="application/ld+json"><?= wp_json_encode(
+      ['@context' => 'https://schema.org', '@type' => 'FAQPage', 'mainEntity' => $schema],
+      JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+  ) ?></script>
+<?php endif; ?>
 ```
 
 Always sanitize dynamic values (`wp_strip_all_tags`, `esc_url`) and encode with `wp_json_encode`.
+
+**Emit nothing rather than something invalid.** If a node's required properties are missing, skip the
+node: an invalid node in Search Console is worse than an absent one. Real example: Google rejects a
+`JobPosting` that says neither where the work happens nor that it is remote — so fall back to the
+organisation's address, and if that is missing too, do not emit the node at all. The same reasoning
+applies to a `Product` without an offer, an `Article` without a date, an FAQ with no complete pair.
+
+Validate dates and enums in the **`sanitize_callback`** of the meta they come from
+(`post-meta-and-settings.md`), not in the template — by render time it is too late to do anything but
+drop the node.
 
 ## Type cheat-sheet (match to the project)
 - E-commerce / product pages → `Product` + `Offer` (+ `AggregateRating`, `Review` if present).
@@ -119,8 +138,19 @@ the `theme/seo/emit_schema` filter to disable the theme graph on sites where the
 ## Performance & LLM-readiness
 - Server-rendered Blade (done), no front-end React (done), responsive images (`srcset`/`sizes`,
   `loading="lazy"` below the fold), preload the LCP image, minimal CSS/JS.
-- **`llms.txt`** (optional): a plain-text map of key pages at site root can help LLM crawlers. Emit it
-  from the theme or a mu-plugin route. Emerging convention, not a standard — nice-to-have.
+### `llms.txt` — the pattern
+
+A plain-text map of the site for LLM crawlers (emerging convention, not a standard). Worth shipping,
+and cheap:
+
+- Serve `/llms.txt` (an index) and `/llms-full.txt` (the content) from a **mu-plugin** with a rewrite
+  rule, so it survives a theme switch.
+- Generate from the real content, cache in a transient, invalidate on `save_post`.
+- Open `robots.txt` to the AI crawlers you want to allow, in the same place.
+- ⚠️ **This is the worst place to bypass a canonical accessor.** A value the site is not supposed to
+  expose — a client under NDA, a draft price — leaks here precisely because the file is explicitly
+  opened to crawlers. Every read goes through the one method that owns the rule
+  (`plugin-interop.md`), guarded with `class_exists()` when the method lives in the theme.
 
 ## Verify
 Run rendered pages through a structured-data validator. Confirm the graph is complete and valid, nodes
