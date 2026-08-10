@@ -34,17 +34,29 @@ require_once __DIR__ . '/<project>-core/plugin.php';
 ## Register a CPT (content model → mu-plugin, NOT theme)
 ```php
 // <project>-core/src/PostTypes/Product.php
+
+// Load the textdomain BEFORE anything registers labels: register_post_type() freezes them at
+// registration time, so an untranslated __() there stays untranslated forever.
+add_action('init', fn () => load_muplugin_textdomain('mytheme', 'lang'), -10);
+
 add_action('init', function () {
     register_post_type('product', [
-        'labels'       => ['name' => 'Products', 'singular_name' => 'Product'],
+        'labels'       => ['name' => __('Products', 'mytheme'), 'singular_name' => __('Product', 'mytheme')],
         'public'       => true,
         'has_archive'  => true,
         'show_in_rest' => true,          // editable in the block editor / queryable via REST
-        'supports'     => ['title', 'editor', 'thumbnail', 'excerpt'],
+        'supports'     => ['title', 'editor', 'thumbnail', 'excerpt', 'custom-fields'],
         'rewrite'      => ['slug' => 'products'],
     ]);
-});
+
+    mytheme_register_product_meta();     // a NAMED function — see post-meta-and-settings.md
+}, 0);
 ```
+
+⚠️ `custom-fields` in `supports` is not optional when the type has meta edited from the block editor:
+it is what puts `meta` in the REST schema. Without it every sidebar field is discarded on save,
+silently. Full explanation, sanitization patterns, repeaters and the native settings page:
+**`post-meta-and-settings.md`**.
 
 ## Custom REST endpoint (data a block/template consumes)
 ```php
@@ -67,6 +79,13 @@ endpoint and passes plain data to Blade. The view never queries.
 CPTs, taxonomies, meta registration tied to the content model, REST routes, WP-CLI commands, cron jobs,
 third-party API clients, webhooks, e-commerce/business rules, integrations. Anything that answers "this
 must keep working if the theme changes" with *yes*.
+
+## Key names are a contract
+
+Renaming an option or meta key does not clear a field — it **orphans the value silently**. The data
+stays in the database under the old name, the admin screen looks empty, and every reader (templates,
+the schema graph, composers) stops finding it with no error at all. Treat a rename as a migration
+(`content-migrations.md`), and only ever do it when the *format* changed too.
 
 ## What does NOT belong here
 Markup, Blade, Tailwind, block edit components, `theme.json`/tokens, asset enqueuing for theme styling.

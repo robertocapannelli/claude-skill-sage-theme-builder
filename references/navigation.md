@@ -56,6 +56,37 @@ tree renderer) emit nested `<ul>`s with the right ARIA:
 A custom `Walker_Nav_Menu` subclass (`app/Navigation/TailwindNavWalker.php`) is the clean way to inject
 Tailwind classes and ARIA without filtering markup after the fact.
 
+## Alternative: a normalized menu reader (no `wp_nav_menu()`)
+
+When the design's markup is far from core's — icons inside dropdown items, a mobile panel with its own
+structure, per-item data attributes — a walker becomes a fight against a template you did not write.
+The alternative that scales better: read the menu into a **plain array** and let Blade own the markup.
+
+```php
+// app/Support/NavMenu.php
+public static function items(string $location): array
+{
+    // → [['label','url','target','slug','children' => [...]], …], two levels, memoised per request
+}
+```
+
+Expose it from the `App` composer (`$navPrimary`, `$navFooter`) and write the markup by hand in Blade.
+You get the design's exact HTML, testable data (a unit test on `items()` beats asserting on a walker's
+output), and no `wp_nav_menu()` filters to fight.
+
+Cost: you now own the behaviour core gave you for free, so **declare the editorial constraints
+explicitly** and document them for whoever manages the menus:
+
+- **No fallback.** An unassigned location renders nothing (plus the admin-only placeholder above).
+- **A maximum depth**, with anything deeper discarded rather than silently flattened.
+- **How unknown values degrade** — if items map to icons by slug, an unrecognised slug means no icon,
+  never a broken image. Keep that mapping in **one** table, canonical key → label → every slug the
+  entry has ever had, so renaming a post's slug in admin does not silently drop its icon and degrade
+  its link to `#`.
+- If `items()` memoises per request (it should), **reset the static in tests**.
+
+Choose the walker when the markup is close to core's, the reader when it is not. Do not do both.
+
 ## Offcanvas mobile menu
 
 Always ship an offcanvas menu for mobile, styled with the theme's own tokens (it must look like the
