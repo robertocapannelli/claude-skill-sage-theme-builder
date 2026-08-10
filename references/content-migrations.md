@@ -220,4 +220,8 @@ instances render nothing. Two options:
 - [ ] Revisions handled on their own write path
 - [ ] Legacy data left in place as a safety copy, cleanup documented
 - [ ] Verified with a second run that reports zero changes
+- [ ] Caches actually invalidated — `wp cache flush` clears the **object** cache only. A page cache or
+      a CDN in front of WordPress will keep serving the old HTML after a successful database write,
+      which looks exactly like a failed migration. Purge them too, and check a published URL rather
+      than the editor.
 - [ ] Tracked per environment — the real risk is running it on staging and forgetting production
