@@ -1,154 +1,169 @@
 ---
 name: sage-theme-builder
 description: >-
-  Build production WordPress themes on the Sage 11 (Roots) starter theme, starting from a Figma
-  design or HTML/CSS mockups and porting them faithfully to WordPress. Use this whenever the user
-  wants to start or scaffold a Sage theme, convert a Figma file or HTML mockup into Blade components
-  + Tailwind v4, create native Gutenberg blocks, wire up design tokens / theme.json, add schema.org
-  JSON-LD, or decide what belongs in the theme versus a mu-plugin. Trigger on phrases like "tema
-  Sage", "porta questo Figma su WordPress", "converti questo HTML in tema", "fammi un blocco
-  Gutenberg", "scaffolda un blocco nativo", "tema WordPress performante con Tailwind", or any work
-  that implies the Roots stack (Blade, Acorn, Vite) even when "Sage" is not named explicitly.
-  Runs in Claude Code against a real Sage 11 project on disk.
-allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *)
+  Use when building or changing a WordPress theme on the Sage/Roots stack (Blade, Acorn, Vite,
+  Tailwind), even when "Sage" is not named: scaffolding a theme, porting a Figma file or HTML mockup
+  to WordPress, design tokens and theme.json, native Gutenberg blocks, block previews that don't
+  match the front end, post meta and settings without ACF, schema.org JSON-LD, theme or block tests,
+  renaming a block/CPT/option in an existing site, or deciding what belongs in the theme versus a
+  mu-plugin. Also on Italian phrasings ("tema Sage", "fammi un blocco Gutenberg", "l'anteprima
+  nell'editor non torna", "rinomina il blocco"). Runs against a real project on disk.
+allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*)
 ---
 
 # Sage Theme Builder
 
 Build fast, SEO-solid, fully editable WordPress themes on **Sage 11** by faithfully translating a
-design (Figma or HTML/CSS) into Blade components, Tailwind v4, and **native** Gutenberg blocks.
+design (Figma or HTML/CSS) into Blade templates, Tailwind v4, and **native** Gutenberg blocks.
 
-## Verified stack (Sage 11.x — confirm before relying on it)
+## Verified stack (confirm before relying on it)
 
-- **Templating:** Laravel Blade via **Acorn 5** (Laravel 12 components).
-- **Build:** **Vite 6** (NOT Bud — Bud was Sage 10). `@roots/vite-plugin` provides `wordpressPlugin()`
-  (externalizes `@wordpress/*` to `wp.*` globals + emits `editor.deps.json`) and `wordpressThemeJson()`.
-- **CSS:** **Tailwind v4** via `@tailwindcss/vite`, configured **CSS-first** with `@theme {}` in
-  `resources/css/app.css` (there is usually no `tailwind.config.js`).
-- **theme.json:** auto-generated on build from the Tailwind theme. Do **not** hand-edit design tokens
-  into `theme.json`, and do **not** use `add_theme_support()` for editor config — it is ignored when a
-  `theme.json` is present.
+- **Templating:** Laravel Blade via **Acorn 5**.
+- **Build — two bundlers, deliberately:**
+  - **Vite** (+ `laravel-vite-plugin`, `@roots/vite-plugin`) for `app.css`/`app.js`/`editor.css`/
+    `editor.js` → `public/build/`, plus `wordpressThemeJson()`.
+  - **`@wordpress/scripts` (webpack)** for the block editor bundle → `public/blocks/index.js` +
+    `index.asset.php`. It emits the exact `wp-*` dependency array, which is what removes the whole
+    class of "editor throws `wp is not defined`" problems. One `npm run dev` runs both via
+    `concurrently`.
+- **CSS:** **Tailwind v4** via `@tailwindcss/vite`, configured CSS-first — `@theme` tokens in
+  `resources/css/tokens.css`, imported by `app.css`. Usually no `tailwind.config.js`.
+- **theme.json:** the root file is a *source*; the build merges the Tailwind theme into
+  `public/build/assets/theme.json`. Never hand-edit design tokens into it, and don't use
+  `add_theme_support()` for editor config — it is ignored when a `theme.json` exists.
+- Node `^20.19 || >=22.12`.
 
-**Always start by reading the project's `composer.json`, `package.json`, and `vite.config.js`** to
-confirm versions and structure instead of assuming. If you find Bud (`bud.config.js`), you are on
-Sage 10 — adapt the build commands accordingly but keep the same architecture.
+**Always start by reading `composer.json`, `package.json`, `vite.config.js` and `app/setup.php`** to
+confirm versions and structure instead of assuming. `package.json` also tells you immediately whether
+the project uses the two-bundler split. If you find `bud.config.js`, you are on Sage 10 — same
+architecture, different build commands.
 
 ## Operating principles (non-negotiable)
 
 0. **The theme depends ONLY on WordPress + Sage.** No third-party plugin is ever a hard dependency —
-   not Yoast, not ACF, nothing. The theme must render correctly and completely with zero plugins
-   active. Plugins are *optional enhancers*: detect them at runtime (`function_exists`/`defined`/
-   `is_plugin_active`) and degrade gracefully, never couple to them. Anything substitutable stays
-   substitutable. This rule outranks every convenience below.
-1. **Theme = presentation only.** Blade templates/components, block rendering markup, Tailwind,
+   not an SEO plugin, not ACF, nothing. The theme must render correctly and completely with zero
+   plugins active. Plugins are *optional enhancers*: detect them at runtime
+   (`function_exists`/`defined`), and degrade to **nothing** rather than to half a section. This rule
+   outranks every convenience below. See `references/plugin-interop.md`.
+1. **Theme = presentation only.** Blade templates and components, block render templates, Tailwind,
    `theme.json` tokens, asset enqueuing. Nothing else.
-2. **Business logic & functionality → custom mu-plugin**, never the theme. CPTs, taxonomies, custom
-   REST endpoints, cron, third-party integrations, anything that must survive a theme switch. See
-   `references/mu-plugins.md`.
-3. **Gutenberg blocks = native WordPress APIs** (`block.json` + `registerBlockType`). No ACF blocks.
-   Default to **dynamic blocks rendered server-side in Blade** (React only powers the editor). See
-   `references/native-blocks.md`.
-4. **ACF Pro is for fields, options pages, and meta — not for building blocks.** Use it only when a
-   native solution would be materially more work. See `references/acf-usage.md`.
-5. **Every block and template ships coherent semantic HTML + a complete schema.org JSON-LD graph,
-   always.** The theme emits its full structured data unconditionally (duplication with an SEO plugin
-   is accepted by design). It does **not** own `<title>`, meta description, or canonical — those are
-   left to WordPress (`title-tag`) + whatever SEO plugin the site uses, so an external plugin can
-   manage them with no conflict and no dependency. See `references/schema-seo.md`.
-6. **Lightweight by construction.** Server-rendered front end, no React shipped to visitors, only the
-   CSS/JS actually used, lazy assets per block. Performance is a design constraint, not a later pass.
+2. **Business logic & the content model → a mu-plugin.** CPTs, taxonomies, **their meta**, settings
+   pages, REST routes, cron, integrations — anything that must survive a theme switch.
+   See `references/mu-plugins.md`.
+3. **Gutenberg blocks are native and server-rendered.** `block.json` + `render.php`, auto-registered by
+   `glob()`; React powers the editor only. See `references/native-blocks.md`.
+4. **The content model does not need ACF.** `register_post_meta()` with a REST schema,
+   `PluginDocumentSettingPanel` sidebar panels and the Settings API cover typed meta, repeaters and
+   options pages natively. See `references/post-meta-and-settings.md`; ACF only where it already
+   exists (`references/acf-usage.md`).
+5. **Name blocks after structure, not content.** `split-stats`, not `white-label`. A block named after
+   the page it first appeared on becomes a database migration the day someone reuses it.
+6. **Every block and template ships coherent semantic HTML + a complete schema.org JSON-LD graph.** The
+   theme emits its own graph unconditionally (duplication with an SEO plugin accepted by design) and
+   does **not** own `<title>`, meta description or canonical. See `references/schema-seo.md`.
+7. **Lightweight by construction.** Server-rendered front end, no React shipped to visitors,
+   self-hosted fonts, only the CSS/JS actually used. Performance is a design constraint, not a later
+   pass.
 
 ## Workflow
 
-Work through these phases in order. Skip a phase only if the user's request is scoped to one part
-(e.g. "just make me a testimonial block" → jump to Phase 4 after a quick Phase 0 check).
+Work through these in order; skip ahead when the request is scoped to one part (e.g. "just make me a
+testimonial block" → Phase 0 check, then Phase 4).
 
-### Phase 0 — Recon
-- Read `composer.json`, `package.json`, `vite.config.js`, `app/setup.php`, and `resources/css/app.css`.
-- Confirm: Sage version, Vite vs Bud, Tailwind present, ACF Pro installed (`wpackagist-plugin/...` or
-  active plugin), Yoast present, whether a project mu-plugin already exists.
-- Inventory the design input: Figma link, exported images, or HTML/CSS. If a **Figma link** is given,
-  use the Figma MCP (`get_design_context`, `get_screenshot`, `get_variable_defs`) — see
-  `references/design-to-blade.md`. Don't ask for screenshots you can pull yourself.
+**0 — Recon.** Read `composer.json`, `package.json`, `vite.config.js`, `app/setup.php`,
+`resources/css/app.css`: Sage version, bundler split, which optional plugins exist, whether a
+mu-plugin and a test suite already exist. With a Figma link, use the Figma MCP
+(`get_design_context`, `get_variable_defs`, `get_screenshot`) instead of asking for screenshots you
+can fetch yourself.
 
-### Phase 1 — Design tokens
-Extract the design system (colors, typography scale, spacing, radii, breakpoints) and encode it once
-in `@theme {}` in `resources/css/app.css`. This single source feeds both Tailwind utilities and the
-auto-generated `theme.json`, so the block editor inherits the palette/fonts with zero extra work.
-Map Figma variables → `@theme` tokens directly. Details: `references/design-to-blade.md`.
+**1 — Design tokens** into `@theme` in `resources/css/tokens.css`, with `theme(static)` and the
+`@source` lines. → `design-to-blade.md`
 
-### Phase 2 — Blade component library
-Decompose the design into reusable Blade components in `resources/views/components/` (buttons, cards,
-sections, nav). Pass data via **View Composers** (`app/View/Composers/`), never query inside views.
-Faithful markup = semantic HTML5 landmarks + Tailwind utilities matching the design tokens.
+**2 — Blade components** in `components/` and `partials/`; data from View Composers, never a query in
+a view.
 
-### Phase 3 — Templates, navigation & layouts
-Build layouts (`resources/views/layouts/app.blade.php`) and page templates by composing Phase 2
-components. This phase specifically owns:
-- **Navigation**: dynamic via WordPress menus (`wp_nav_menu`, 2–3 levels), an admin placeholder when no
-  menu is assigned, and an accessible **offcanvas** mobile menu styled with theme tokens (Tailwind for
-  all visuals, ~a dozen lines of vanilla JS for the toggle). See `references/navigation.md`.
-- **Archives & singles** as Blade templates (never blocks): every archive has a matching single;
-  taxonomy archives may show an optional description. See `references/templates.md`.
-- **404** always present, tone adapted to the site's sector/brand, with a way forward.
+**3 — Templates & navigation.** Archives and singles as Blade (never blocks), a 404 in the site's
+voice, dynamic menus with an admin-only placeholder and an accessible offcanvas. →
+`templates.md`, `navigation.md`
 
-### Phase 4 — Native Gutenberg blocks
-For every editable design section, scaffold a native dynamic block: `block.json` (apiVersion 3),
-React `edit.js` for back-end editing, `save: () => null`, and a Blade view rendered via
-`render_callback`. Decide **display block vs container block** first (durable content stays in the CPT /
-mu-plugin; the block is a view — home lists loop the real post type and are not editable in the block).
-Document each block (attributes table + README). Full pattern, Vite wiring, escaping, and the
-static-`save()` alternative: `references/native-blocks.md`.
+**4 — Native blocks.** One folder per block, `save: () => null`, `<ServerSideRender>` as the canvas
+preview. → `native-blocks.md`
 
-### Phase 5 — ACF (only where it earns its place)
-Use ACF Pro for post/page meta, options pages, and complex repeaters that aren't block content. Keep
-definitions in code: **PHP registration** when fields are dev-only, **Local JSON** (folder in the
-mu-plugin) when they must stay editable in admin *and* versioned — editability, not performance, is the
-criterion. See `references/acf-usage.md`.
+**5 — Editor parity.** The canvas shows the front end, not a copy of it. → `block-editor-parity.md`
 
-### Phase 6 — mu-plugin for functionality
-Anything beyond presentation goes here: register CPTs/taxonomies, REST endpoints, business logic,
-integrations. The theme consumes this layer; it never owns it. See `references/mu-plugins.md`.
+**6 — Content model.** CPTs, taxonomies and meta in the mu-plugin; sidebar panels and a Settings API
+page for editing. → `post-meta-and-settings.md`
 
-### Phase 7 — Schema.org & SEO/LLM optimization
-The theme always emits its **own complete** JSON-LD graph (Organization, WebSite, BreadcrumbList,
-Article, Product/Offer, LocalBusiness, FAQPage as relevant) — unconditionally, duplication accepted.
-It defers `<title>`, meta description, canonical, and OG/Twitter to WordPress + any SEO plugin
-(`add_theme_support('title-tag')`, no hard emit), so an external plugin can own them without conflict.
-Ensure semantic structure, heading hierarchy, and optionally `llms.txt`. A `theme/seo/emit_schema`
-filter allows turning schema output off per project. See `references/schema-seo.md`.
+**7 — Schema.org & LLM readiness.** Full graph, block-level schema from `render.php`, optional
+`llms.txt`. → `schema-seo.md`
 
-### Phase 8 — Build & verify
-- Run `npm run build` (or `npm run dev` for HMR). For block editor scripts, confirm `editor.deps.json`
-  is generated and the editor isn't throwing missing-`wp.*` errors.
-- Run `wp acorn optimize` before considering it production-ready (compiles Blade, caches config).
-- Verify: blocks appear and edit correctly, front end renders server-side with no React bundle,
-  JSON-LD validates, Lighthouse/PSI is clean. See the checklist below.
+**8 — Tests.** Answer *"does this need a test?"* **explicitly** for every new function — the answer may
+be no, but it may not be skipped. Yes when it has branches, sanitizes/validates/authorizes, produces
+output someone else parses, depends on varying state, or has broken once before. → `testing.md`
+
+**9 — Migrations & hand-off.** A rename — block, CPT, option, meta key — or a change to a block's
+attribute defaults is a database migration: idempotent script, `--dry-run`, run once per environment.
+Leave the project a `CLAUDE.md` with the commands, constraints and traps. →
+`content-migrations.md`, `project-memory.md`
+
+**10 — Build & verify.** `npm run build`, then `wp acorn optimize`. Editor loads clean, the front end
+ships no block React, the JSON-LD validates, the checklist below passes.
+
+## Traps that fail silently
+
+Read this table first whenever something "doesn't show up but throws no error".
+
+| Symptom | Cause | Where |
+|---|---|---|
+| Sidebar meta fields vanish on save, no error | the CPT lacks `custom-fields` in `supports`, so REST has no `meta` property | `post-meta-and-settings.md` |
+| A Tailwind class typed by an editor does nothing | Tailwind never scans block attributes — needs `theme(static)`, and `@source` for PHP | `design-to-blade.md` |
+| White CTA text invisible in the editor only | an unlayered rule in `editor.css` beats `@layer utilities` | `block-editor-parity.md` |
+| Headings/lists unstyled in the canvas, paragraphs fine | prose class applied as `className` instead of a wrapper element | `block-editor-parity.md` |
+| Editor translations disappear after a build | `make-json` without `--no-purge`, or per-source catalogs that don't match the single bundle | `i18n.md` |
+| A published page's copy changes with no edit | a block saved without attributes inherits changed `block.json` defaults | `content-migrations.md` |
+| A migrated block stops parsing | attributes written with `wp_json_encode()` instead of `serialize_block_attributes()` | `content-migrations.md` |
+| Fatal `TypeError` on a live page | arithmetic on an editor-supplied attribute in PHP 8 | `native-blocks.md` |
+| Layout collapses while images decode | an optimizer runs before core's `wp_filter_content_tags()` at priority 12 | `plugin-interop.md` |
+| A plugin's shortcode/tag disappears from the DB after a CLI script | the plugin guards its expansion with `!is_admin()`; WP-CLI is not admin | `plugin-interop.md` |
+| A composer boolean is always true in `@if` | zero-arg methods arrive as a lazy `InvokableComponentVariable` — invoke it | `architecture.md` |
 
 ## Reference map
 
 | Read this | When |
 |---|---|
-| `references/architecture.md` | Project structure, theme↔mu-plugin boundary, Vite/asset details, what NOT to touch |
-| `references/design-to-blade.md` | Turning Figma/HTML into tokens + Blade components; Tailwind v4 `@theme`; Figma MCP usage |
-| `references/navigation.md` | Dynamic WP menus (2–3 levels), no-menu placeholder, accessible offcanvas mobile menu |
-| `references/templates.md` | Blade archives + singles, taxonomy descriptions, home lists from real CPTs, 404 |
-| `references/native-blocks.md` | Full native dynamic-block recipe, display-vs-container blocks, escaping, build wiring |
-| `references/acf-usage.md` | Deciding when ACF Pro is appropriate and how to wire it cleanly |
-| `references/mu-plugins.md` | Scaffolding a project mu-plugin for CPTs, taxonomies, REST, logic |
-| `references/schema-seo.md` | JSON-LD patterns, Yoast coexistence, semantic/performance/LLM rules |
+| `references/architecture.md` | Project structure, bootstrap, two bundlers, theme↔mu-plugin boundary, composers, escaping |
+| `references/design-to-blade.md` | Figma/HTML → tokens → Blade; Tailwind v4 `@theme`, `theme(static)`, `@source`, self-hosted fonts |
+| `references/navigation.md` | WP menus, no-menu placeholder, offcanvas, normalized menu reader |
+| `references/templates.md` | Blade archives, singles, composed vs prose pages, 404 |
+| `references/native-blocks.md` | The block recipe: block.json + render.php, editor bundle, inheritance, naming |
+| `references/block-editor-parity.md` | Canvas CSS, `editor.css` as shims, prose wrapper filter, editor data injection |
+| `references/post-meta-and-settings.md` | Meta with REST schema, `custom-fields`, repeaters, sidebar panels, Settings API |
+| `references/mu-plugins.md` | Scaffolding the mu-plugin: CPTs, taxonomies, REST, key-name discipline |
+| `references/schema-seo.md` | JSON-LD patterns, invalid-node rule, semantic/performance/LLM rules, `llms.txt` |
+| `references/testing.md` | Three-level suite, the four wiring traps, the block tests you write once |
+| `references/content-migrations.md` | Renames and format changes as DB migrations; the script recipe |
+| `references/i18n.md` | POT/PO/MO/JSON pipeline and its two silent traps |
+| `references/plugin-interop.md` | Optional-plugin degradation, `the_content` priorities, WP-CLI resave trap |
+| `references/remote-environments.md` | One audited door to staging/production |
+| `references/project-memory.md` | Writing the project's CLAUDE.md as a deliverable |
+| `references/acf-usage.md` | Only for projects that already have ACF — including how to get off it |
 
 ## Definition of done
 
-- [ ] Design tokens live only in `@theme`; `theme.json` is generated, not hand-edited.
-- [ ] Design reproduced faithfully with semantic Blade components; no logic in views.
-- [ ] Blocks are native, editable in the back end, documented, and render server-side (no front-end React).
-- [ ] All code in English; output escaped by context (`esc_html`/`esc_attr`/`esc_url`/`wp_kses_post`).
-- [ ] Navigation is dynamic (WP menus, 2–3 levels) with a no-menu placeholder and an accessible offcanvas on mobile.
+- [ ] Design tokens live only in `@theme`; `theme.json` is generated, not hand-edited; `theme(static)`
+      and `@source` are in place.
+- [ ] Design reproduced faithfully with semantic Blade; no logic in views.
+- [ ] Blocks are native, server-rendered, auto-registered, documented, named after structure.
+- [ ] The editor canvas shows the front-end stylesheet; `editor.css` contains only shims.
+- [ ] The content model (CPTs, meta, settings) lives in a mu-plugin, with `custom-fields` where meta is
+      edited from the editor.
+- [ ] Navigation is dynamic with an admin-only placeholder and an accessible offcanvas.
 - [ ] Archives and singles are Blade templates; a 404 exists with sector-appropriate tone.
-- [ ] Durable content lives in the mu-plugin/CPT layer; home lists loop the real post type, not static block copy.
-- [ ] No business logic in the theme; functionality lives in a mu-plugin.
-- [ ] ACF used only where justified, fields versionable.
-- [ ] Theme renders fully with **zero plugins active**; no hard dependency on Yoast, ACF, or anything but WP + Sage.
-- [ ] Every page emits a complete, valid schema.org graph (duplication with an SEO plugin accepted); `title`/description/canonical left to WP + optional SEO plugin.
+- [ ] Every page emits a complete, valid schema.org graph; `title`/description/canonical left to WP +
+      any SEO plugin.
+- [ ] The theme renders fully with **zero plugins active**; optional integrations degrade to nothing.
+- [ ] All code in English; output escaped by context.
+- [ ] The "does this need a test?" question was answered for every new function, and the answers hold.
+- [ ] Every rename or format change shipped with an idempotent migration script, and its per-environment
+      status is recorded.
 - [ ] `npm run build` + `wp acorn optimize` succeed; editor and front end both clean.
