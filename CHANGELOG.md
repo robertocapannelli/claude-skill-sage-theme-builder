@@ -2,6 +2,10 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 2.0.1 — 2026-09-27
+
+- Public `README.md` for the GitHub repository (not packaged in the skill zip).
+
 ## 2.0.0 — 2026-09-27
 
 - **Kickoff phase** (`references/project-kickoff.md`): git initialised with the user's remote and

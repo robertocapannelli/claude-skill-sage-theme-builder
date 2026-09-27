@@ -43,4 +43,5 @@ assets/             files the agent copies into projects (bin/deploy, .env.examp
 evals/evals.json    behaviour cases (not packaged)
 scripts/            maintainer tooling (not packaged)
 CHANGELOG.md        one entry per version (not packaged)
+README.md           public description for GitHub (not packaged)
 ```
