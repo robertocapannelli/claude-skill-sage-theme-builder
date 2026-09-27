@@ -356,6 +356,20 @@
         "Le traduzioni italiane sono aggiunte a resources/lang/it_IT.po e compilate",
         "Esegue o indica translate:check prima di considerare il lavoro finito"
       ]
+    },
+    {
+      "id": "env-example-complete",
+      "prompt": "Nuovo progetto WordPress con Sage: prepara gli ambienti. Per ora conosco solo l'URL di staging, il resto te lo darò più avanti.",
+      "expected_output": ".env.example è la copia esatta di assets/env.example con tutte le chiavi (progetto, local, staging, produzione) valorizzate con valori fittizi; .env contiene le stesse chiavi con l'URL di staging reale e i valori fittizi per il resto; bin/deploy check-env mostra cosa manca.",
+      "files": [],
+      "assertions": [
+        ".env.example contiene tutte le chiavi PRODUCTION_* oltre a LOCAL_* e STAGING_*",
+        "Nessuna riga di .env.example ha un valore vuoto (KEY=)",
+        "I valori fittizi contengono 'example' o sono CHANGE_ME per i segreti",
+        ".env contiene tutte le chiavi di .env.example, con STAGING_URL reale",
+        "Esegue bin/deploy check-env e mostra le chiavi ancora da compilare",
+        "Non chiede di incollare password in chat"
+      ]
     }
   ]
 }

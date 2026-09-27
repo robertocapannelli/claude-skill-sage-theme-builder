@@ -3,6 +3,7 @@
 # bin/deploy — the only route from this working copy to staging or production.
 #
 #   bin/deploy selftest                                  offline test of the path validator
+#   bin/deploy check-env                                 list .env keys still holding placeholder values
 #   bin/deploy <env> doctor                              read-only connectivity checks
 #   bin/deploy <env> push [--dry-run] [--allow-dirty]    build, then upload theme + mu-plugins
 #   bin/deploy <env> wp <args…>                          remote wp-cli (ssh transport only)
@@ -96,6 +97,7 @@ load_env() {
             val="${val%%[[:space:]]#*}"
             val="${val%"${val##*[![:space:]]}"}"
         fi
+        # shellcheck disable=SC2088  # literal "~/" prefix match is intended
         case "$val" in "~/"*) val="$HOME/${val#\~/}" ;; esac
         printf -v "$key" '%s' "$val"
     done < .env
@@ -105,6 +107,30 @@ load_env() {
 }
 
 envvar() { local n="${PREFIX}_$1"; printf '%s' "${!n:-}"; }
+
+# A value containing "example" or "CHANGE_ME" is a placeholder from .env.example: treat it as unset.
+is_placeholder() { case "$1" in ""|*example*|*CHANGE_ME*) return 0 ;; *) return 1 ;; esac; }
+
+check_env() {
+    local key val missing=0 env keys
+    for env in STAGING PRODUCTION; do
+        keys=(URL TRANSPORT HOST PORT USER ROOT)
+        for key in "${keys[@]}"; do
+            val="${env}_${key}"; val="${!val:-}"
+            if is_placeholder "$val"; then printf '  ✗ %s_%s\n' "$env" "$key"; missing=1; fi
+        done
+        val="${env}_TRANSPORT"; val="${!val:-ssh}"
+        if [[ "$val" == ssh ]]; then
+            val="${env}_SSH_KEY"; val="${!val:-}"
+            if is_placeholder "$val" || [[ ! -f "$val" ]]; then printf '  ✗ %s_SSH_KEY (placeholder or file not found)\n' "$env"; missing=1; fi
+        fi
+    done
+    for key in PROJECT_SLUG THEME_DIR; do
+        is_placeholder "${!key:-}" && { printf '  ✗ %s\n' "$key"; missing=1; }
+    done
+    if [[ $missing -eq 0 ]]; then echo "check-env: staging and production fully configured"; else echo "check-env: the keys above still hold placeholder values"; fi
+    return 0
+}
 
 select_env() {
     case "$1" in
@@ -116,6 +142,10 @@ select_env() {
     TRANSPORT="$(envvar TRANSPORT)"; HOST="$(envvar HOST)"; PORT="$(envvar PORT)"
     RUSER="$(envvar USER)"; KEY="$(envvar SSH_KEY)"; RROOT="$(envvar ROOT)"
     PORT="${PORT:-22}"; TRANSPORT="${TRANSPORT:-ssh}"
+    local k
+    for k in HOST USER ROOT; do
+        is_placeholder "$(envvar "$k")" && die "${PREFIX}_$k in .env is still a placeholder — set the real value (bin/deploy check-env)"
+    done
     [[ -n "$HOST" && -n "$RUSER" && -n "$RROOT" ]] || die "${PREFIX}_HOST/_USER/_ROOT must be set in .env"
     case "$HOST"  in *[!A-Za-z0-9.-]*) die "${PREFIX}_HOST contains invalid characters" ;; esac
     case "$RUSER" in *[!A-Za-z0-9._-]*) die "${PREFIX}_USER contains invalid characters" ;; esac
@@ -124,6 +154,7 @@ select_env() {
     case "$TRANSPORT" in
         ssh)  [[ -n "$KEY" && -f "$KEY" ]] || die "ssh transport needs ${PREFIX}_SSH_KEY pointing to a key file" ;;
         sftp) command -v lftp >/dev/null || die "sftp transport needs lftp (brew install lftp)"
+              if is_placeholder "$KEY" || [[ ! -f "$KEY" ]]; then KEY=""; fi
               if [[ -z "$KEY" ]]; then
                   local pw; pw="$(envvar SFTP_PASSWORD)"
                   [[ -n "$pw" && "$pw" != CHANGE_ME ]] || die "set ${PREFIX}_SFTP_PASSWORD or ${PREFIX}_SSH_KEY"
@@ -277,6 +308,10 @@ case "$1" in
 esac
 
 load_env
+if [[ "$1" == check-env ]]; then check_env; exit 0; fi
+for k in PROJECT_SLUG THEME_DIR; do
+    is_placeholder "${!k}" && die "$k in .env is still a placeholder — set the real value (bin/deploy check-env)"
+done
 select_env "$1"; shift
 cmd="${1:-}"; shift || true
 case "$cmd" in

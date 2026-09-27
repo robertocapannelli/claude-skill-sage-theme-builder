@@ -66,12 +66,25 @@ prompt instead of a commit.
 
 ## 2. `.env` — one file, three environments
 
-One `.env` at the repository root, **gitignored**, plus a committed `.env.example` with the same keys
-and no values. Ask the user for the non-secret values and write them; write every secret as
-`CHANGE_ME` and tell the user which lines to fill in by hand. Secrets must never pass through the
-conversation.
+Two files at the repository root, both **complete from the first minute**:
 
-Start from `assets/env.example` (copy it to `.env.example`, then to `.env`). Ask, in one round:
+| File | In git | Content |
+|---|---|---|
+| `.env.example` | committed | **every** key — project, local, staging **and production** — each with a **fictitious value** and a comment |
+| `.env` | gitignored, `chmod 600` | the same keys, real values where known, the fictitious value where not yet known |
+
+**`.env.example` is created by copying `assets/env.example` byte for byte (`cp`), never by retyping
+it and never with empty values.** An `.env.example` with bare `KEY=` lines, or missing the production
+block, is a defect: whoever starts the project has to reconstruct the keys by hand. If the project
+needs an extra key, add it to both files with a fictitious value and a comment.
+
+Fictitious values follow one convention: they contain `example` (RFC 2606 names like
+`ssh.example.com`, `/var/www/example-project/…`, `example_user`) or are `CHANGE_ME` for secrets.
+`bin/deploy` treats any such value as **not configured** and refuses to deploy with it, so a
+placeholder can sit in `.env` safely until the real value arrives. `bin/deploy check-env` lists what is
+still missing.
+
+Then build `.env`: ask the user, in one round, for what they already know —
 
 | Key group | Ask |
 |---|---|
@@ -79,11 +92,14 @@ Start from `assets/env.example` (copy it to `.env.example`, then to `.env`). Ask
 | `LOCAL_*` | local URL, how `wp` is invoked locally (`wp`, `ddev wp`, `docker exec …`), DB name/user/host |
 | `STAGING_*`, `PRODUCTION_*` | URL; transport (`ssh` preferred, `sftp` if the host has no shell); host, port, user; path to the dedicated SSH key; absolute WordPress root on the server |
 
-Unknown values stay empty; the script refuses to run against an environment until they are filled.
+— and write `.env` **once**, as a new file containing **every** key of `.env.example`: the answers
+replace the fictitious values, everything unanswered keeps its fictitious value, secrets stay
+`CHANGE_ME`. Never drop a key because its value is unknown. Finish with `bin/deploy check-env` and show
+the user the list of keys still to fill.
 
-Write `.env` **once**, as a new file, with the answers. From then on it belongs to the user: the
-project settings deny reading and editing it and the guard hook blocks it in the shell, so later
-changes are made by hand — tell the user which key to change rather than asking them to paste it.
+From then on `.env` belongs to the user: the project settings deny reading and editing it and the guard
+hook blocks it in the shell, so later changes are made by hand — tell the user which key to change
+rather than asking them to paste it.
 
 Deliberately **absent**: remote database credentials. With SSH, remote `wp-cli` reads them from the
 remote `wp-config.php`; with SFTP there is no remote `wp-cli` to use them. A secret with no consumer is
@@ -154,8 +170,10 @@ already contain it, save it as `resources/images/logo.svg`, and wire the login s
 
 - [ ] `origin` set and shown back to the user; default branch named; no commit made without a request.
 - [ ] `.gitignore` covers `.env`, build output, `vendor/`, `node_modules/`, uploads, core.
-- [ ] `.env` written (secrets as `CHANGE_ME`), `chmod 600`, `git check-ignore .env` passes;
-      `.env.example` committed-ready.
+- [ ] `.env.example` is a verbatim copy of `assets/env.example`: every key, production included, with
+      a fictitious value — no bare `KEY=` line.
+- [ ] `.env` has every key of `.env.example` (real values where known, secrets `CHANGE_ME`),
+      `chmod 600`, `git check-ignore .env` passes; `bin/deploy check-env` output shown to the user.
 - [ ] `bin/deploy` in place; `selftest` passes; `.claude/settings.json` + guard hook installed.
 - [ ] New site only: admin user and email asked, never `admin`; password-change reminder given.
 - [ ] `it_IT.po` for theme and mu-plugin exist; any extra language asked; `translate:check` wired.
