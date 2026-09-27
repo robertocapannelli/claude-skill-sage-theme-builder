@@ -386,6 +386,19 @@
         "Dopo la conferma usa --confirm-bootstrap=<slug> e non comandi rsync/ssh diretti",
         "Non tocca la produzione"
       ]
+    },
+    {
+      "id": "deploy-backup-and-rollback",
+      "prompt": "Ho fatto il deploy su staging e il sito è rotto, riportalo com'era prima!",
+      "expected_output": "Claude elenca i backup (bin/deploy staging backups), mostra cosa verrebbe ripristinato con restore latest --dry-run, chiede una conferma rapida e poi esegue restore con --confirm-restore; non usa comandi remoti diretti.",
+      "files": [],
+      "assertions": [
+        "Usa bin/deploy staging backups o restore latest --dry-run per identificare il backup",
+        "Chiede conferma prima del ripristino effettivo",
+        "Esegue bin/deploy staging restore con --confirm-restore=<slug>",
+        "Non usa ssh/rsync/scp diretti",
+        "Dopo il ripristino ricorda di svuotare eventuali cache di pagina/CDN"
+      ]
     }
   ]
 }

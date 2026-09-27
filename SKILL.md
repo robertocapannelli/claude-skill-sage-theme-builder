@@ -13,7 +13,7 @@ description: >-
   real project on disk.
 allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
 metadata:
-  version: "2.5.0"
+  version: "2.6.0"
 ---
 
 # Sage Theme Builder
@@ -79,7 +79,9 @@ architecture, different build commands.
    is the agent's to use; production runs only when the user asks for it in the current message,
    never as a follow-up to a staging deploy. The **first deploy** to a server (`bootstrap`: theme,
    mu-plugins, needed plugins, uploads, optionally the database) always shows its plan and waits for
-   the user's explicit confirmation. Remote access is **always by SSH key** — the keys already
+   the user's explicit confirmation. **Every deploy first backs up** what it can overwrite (theme,
+   mu-plugins, uploaded plugins, database) and stops if the backup fails; `bin/deploy <env> restore`
+   rolls back in one command, after the user confirms. Remote access is **always by SSH key** — the keys already
    on the computer, never a password. See `references/remote-environments.md`.
 11. **Secrets never pass through the conversation.** `.env` holds local/staging/production config,
    is **always gitignored and never tracked**, `chmod 600`; `.env.example` is **always tracked**; secrets are written as `CHANGE_ME` for the user to fill in.
@@ -148,7 +150,8 @@ ships no block React, the JSON-LD validates, the checklist below passes.
 
 **12 — Deploy.** First time on a server: `bin/deploy staging bootstrap --plan`, show it, ask which
 components (plugins, uploads, database) and confirm, then run with `--confirm-bootstrap=<slug>`.
-Afterwards: `bin/deploy staging push` (it builds first) and report the staging URL. Production
+Afterwards: `bin/deploy staging push` (it backs up, then builds) and report the staging URL **and the
+backup id with its rollback command**. Production
 only when the user asks for it explicitly: `bin/deploy production push --dry-run` to show the diff,
 then `--confirm-production=<slug>`. Commit only if asked. → `remote-environments.md`
 
@@ -169,6 +172,7 @@ Read this table first whenever something "doesn't show up but throws no error".
 | Fatal `TypeError` on a live page | arithmetic on an editor-supplied attribute in PHP 8 | `native-blocks.md` |
 | Layout collapses while images decode | an optimizer runs before core's `wp_filter_content_tags()` at priority 12 | `plugin-interop.md` |
 | A plugin's shortcode/tag disappears from the DB after a CLI script | the plugin guards its expansion with `!is_admin()`; WP-CLI is not admin | `plugin-interop.md` |
+| A deploy broke the site | roll back: `bin/deploy <env> restore latest --dry-run`, confirm with the user, then `--confirm-restore=<slug>` | `remote-environments.md` |
 | Staging shows old CSS/JS, or unstyled pages after a deploy | build output is gitignored and was not rebuilt — deploy by hand instead of `bin/deploy` | `remote-environments.md` |
 | An editor can't change a text or image on the page | hard-coded in `render.php`, or an attribute with no control | `native-blocks.md` |
 | A composer boolean is always true in `@if` | zero-arg methods arrive as a lazy `InvokableComponentVariable` — invoke it | `architecture.md` |
@@ -229,4 +233,5 @@ Read this table first whenever something "doesn't show up but throws no error".
       status is recorded.
 - [ ] `npm run build` + `wp acorn optimize` succeed; editor and front end both clean.
 - [ ] First deploy done with `bootstrap` after the user confirmed its plan; later ones with `push`.
+- [ ] Every deploy produced a backup; the user was given its id and the `restore` command.
 - [ ] Deployed to staging through `bin/deploy`; production untouched unless explicitly requested.

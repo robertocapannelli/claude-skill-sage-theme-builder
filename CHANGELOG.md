@@ -2,6 +2,21 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 2.6.0 — 2026-09-27
+
+- **Every deploy is backed up first** — `push`, `bootstrap`, `eval-file`, staging and production:
+  remote theme, mu-plugins, the plugins being uploaded, and (ssh) the gzipped database, with a
+  manifest. If the backup fails, the deploy does not start. Unchanged files are hard-linked to the
+  previous backup; `BACKUP_KEEP` (default 10) per environment.
+- **One-command rollback**: `bin/deploy <env> backups` and `bin/deploy <env> restore <id|latest>` —
+  exact restore of the saved folders plus the database, then cache/rewrite flush and `acorn optimize`;
+  `--files-only`, `--db-only`, `--dry-run`. Requires `--confirm-restore=<slug>` (and
+  `--confirm-production` on production); `.claude/settings.json` puts staging restore under `ask`.
+- Kept and shipped the in-flight improvements already in `bin/deploy`: `eval-file` (remote wp-cli
+  scripts, now backed up first), trailing-slash normalisation for the URL rewrite, the table-prefix
+  check before any transfer, and a local DB export written to a file and validated.
+- `BACKUP_KEEP` added to `.env.example`; one new eval.
+
 ## 2.5.0 — 2026-09-27
 
 - **First deploy: `bin/deploy <env> bootstrap`** — theme + mu-plugins (built), the plugins listed in

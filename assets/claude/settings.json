@@ -8,6 +8,8 @@
       "Bash(bin/deploy production:*)",
       "Bash(bin/deploy staging bootstrap:*)",
       "Bash(./bin/deploy staging bootstrap:*)",
+      "Bash(bin/deploy staging restore:*)",
+      "Bash(./bin/deploy staging restore:*)",
       "Bash(./bin/deploy production:*)"
     ],
     "deny": [
