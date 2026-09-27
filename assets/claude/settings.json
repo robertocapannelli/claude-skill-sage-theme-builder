@@ -6,6 +6,8 @@
       "Bash(git tag:*)",
       "Bash(git reset --hard:*)",
       "Bash(bin/deploy production:*)",
+      "Bash(bin/deploy staging bootstrap:*)",
+      "Bash(./bin/deploy staging bootstrap:*)",
       "Bash(./bin/deploy production:*)"
     ],
     "deny": [

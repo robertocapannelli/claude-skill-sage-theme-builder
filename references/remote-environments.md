@@ -10,6 +10,7 @@ Ready-made files in this skill — **copy them, don't rewrite them from memory**
 | Skill asset | Goes to (project) |
 |---|---|
 | `assets/bin/deploy` | `bin/deploy` (`chmod +x`) |
+| `assets/deploy-plugins.txt` | `deploy-plugins.txt` (committed: plugins the site needs, one slug per line) |
 | `assets/gitignore` | `.gitignore` (`.env` always ignored, `.env.example` always tracked) |
 | `assets/env.example` | `.env.example` (committed, verbatim copy: every key with a fictitious value) → `.env` (gitignored, `chmod 600`, same keys) |
 | `assets/claude/settings.json` | `.claude/settings.json` (merge if one exists) |
@@ -22,6 +23,8 @@ bin/deploy selftest                                   # offline test of the path
 bin/deploy check-env                                  # which .env keys still hold placeholder values
 bin/deploy staging doctor                             # read-only checks: wp-config, wp-cli, DB
 bin/deploy staging push [--dry-run]                   # BUILD, then upload theme + mu-plugins
+bin/deploy staging bootstrap --plan                   # FIRST deploy: what would be transferred
+bin/deploy staging bootstrap --confirm-bootstrap=<slug> [--with-db]   # after the user confirms
 bin/deploy production push --confirm-production=<slug>   # explicit request only — see below
 bin/deploy <env> wp <args…>                           # remote wp-cli (ssh only)
 bin/deploy <env> db-backup                            # remote DB dump → .deploy-backups/ (ssh only)
@@ -35,11 +38,55 @@ never trusted to contain a current build. `push` always, in this order:
 1. `npm run build` in the theme (`npm ci` first if `node_modules/` is missing);
 2. copies the theme into `.deploy-build/theme/` without `node_modules`, `vendor`, `tests`, `.env*`;
 3. `composer install --no-dev --optimize-autoloader` **inside that copy** — the working copy keeps its
-   dev dependencies;
+   dev dependencies. It runs through `LOCAL_COMPOSER_CMD` (default `composer`): when PHP/Composer
+   live only in a container (Devilbox, Docker), set it to e.g.
+   `"docker exec -u devilbox -w /shared/httpd/<site>/htdocs devilbox-php-1 composer"` — `-w` must be
+   the **repository root as seen inside the container**, because the working dir is passed relative;
+   then asserts `vendor/autoload.php`;
 4. asserts `public/build/manifest.json` and, when blocks exist, `public/blocks/index.asset.php`;
 5. uploads, then `wp acorn optimize` on the server (ssh).
 
 A dry run builds too: the diff it prints is only honest against a fresh build.
+
+## First deploy: `bootstrap`, always confirmed by the user
+
+The first time a site goes to a server — typically staging — `push` is not enough: the server has
+WordPress but none of the site. `bootstrap` transfers, in this order:
+
+1. **remote DB backup** (when the database is included);
+2. **theme + mu-plugins** — through `push`, so the build runs;
+3. **plugins the site needs** — the folders listed in `deploy-plugins.txt`, uploaded from
+   `wp-content/plugins/<slug>/` so the server gets exactly the local versions (premium ones included);
+4. **uploads** — `wp-content/uploads/`, added/updated, never deleted on the server;
+5. **database** (`--with-db`, ssh only) — local export → remote import, then `search-replace` of
+   `LOCAL_URL` → `<ENV>_URL` in both plain and JSON-escaped form (`https:\/\/…`, the form block
+   attributes use), `--skip-columns=guid`; the table prefix must match on both sides;
+6. **activation** (ssh) — the theme, the listed plugins, `rewrite flush`, `acorn optimize`; on staging
+   `blog_public = 0` (discourage search engines).
+
+Prerequisite: WordPress core is installed on the server with its own `wp-config.php` (hosting
+installer or `wp core download` + `wp config create` by the user) — `bin/deploy <env> doctor` must pass.
+
+**The confirmation is mandatory, every time:**
+
+1. Run `bin/deploy <env> bootstrap --plan` (read-only) — with `--with-db` if the database is being
+   considered — and show the output to the user: components, local sizes, plugin list, URL rewrite.
+2. Ask explicitly (question tool when available): *which components* — plugins yes/no, uploads
+   yes/no, **database yes/no** — and *confirm the deploy*. Spell out what the database option means:
+   the remote database is **replaced** (backup taken first) and the server's users become the local
+   ones.
+3. Only after a "yes" in the current conversation, run it with `--confirm-bootstrap=<PROJECT_SLUG>`
+   and the chosen flags (`--no-plugins`, `--no-uploads`, `--with-db`). Without the flag the script
+   refuses; the project settings also put `bin/deploy <env> bootstrap` under `ask`.
+
+A confirmation covers that one run. Re-running `bootstrap` later — to resync the database, say — is a
+new request and needs a new confirmation. After the first deploy, day-to-day updates use `push`.
+
+On production the same command also needs `--confirm-production=<slug>` and is run only on the user's
+explicit request (`--with-db` there overwrites live data: say so plainly before asking).
+
+Over **sftp** there is no remote wp-cli: `--with-db` is refused (import the dump from the hosting
+panel) and activation is left to the user in wp-admin — the script says which theme and plugins.
 
 ## Staging vs production
 

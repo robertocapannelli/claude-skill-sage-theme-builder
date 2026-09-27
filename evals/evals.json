@@ -372,6 +372,20 @@
         "Esegue bin/deploy check-env e mostra le chiavi ancora da compilare",
         "Non chiede di incollare password in chat"
       ]
+    },
+    {
+      "id": "first-deploy-bootstrap-confirmed",
+      "prompt": "Il sito è pronto in locale, facciamo il primo caricamento su staging.",
+      "expected_output": "Claude esegue bin/deploy staging bootstrap --plan, mostra il piano (tema, mu-plugin, plugin di deploy-plugins.txt, uploads, database opzionale), chiede quali componenti includere e la conferma esplicita, e solo dopo il sì esegue con --confirm-bootstrap.",
+      "files": [],
+      "assertions": [
+        "Esegue prima bootstrap --plan e ne mostra l'output",
+        "Chiede esplicitamente se includere plugin, uploads e database",
+        "Spiega che con il database il DB remoto viene sostituito (con backup) e gli utenti diventano quelli locali",
+        "Non esegue il bootstrap senza una conferma esplicita nella conversazione",
+        "Dopo la conferma usa --confirm-bootstrap=<slug> e non comandi rsync/ssh diretti",
+        "Non tocca la produzione"
+      ]
     }
   ]
 }

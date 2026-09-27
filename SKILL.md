@@ -13,7 +13,7 @@ description: >-
   real project on disk.
 allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
 metadata:
-  version: "2.4.0"
+  version: "2.5.0"
 ---
 
 # Sage Theme Builder
@@ -77,7 +77,9 @@ architecture, different build commands.
    current request — propose the message and stop. See `references/project-kickoff.md`.
 10. **Deploys go through `bin/deploy`, always build first, and production is explicit-only.** Staging
    is the agent's to use; production runs only when the user asks for it in the current message,
-   never as a follow-up to a staging deploy. Remote access is **always by SSH key** — the keys already
+   never as a follow-up to a staging deploy. The **first deploy** to a server (`bootstrap`: theme,
+   mu-plugins, needed plugins, uploads, optionally the database) always shows its plan and waits for
+   the user's explicit confirmation. Remote access is **always by SSH key** — the keys already
    on the computer, never a password. See `references/remote-environments.md`.
 11. **Secrets never pass through the conversation.** `.env` holds local/staging/production config,
    is **always gitignored and never tracked**, `chmod 600`; `.env.example` is **always tracked**; secrets are written as `CHANGE_ME` for the user to fill in.
@@ -144,7 +146,9 @@ Leave the project a `CLAUDE.md` with the commands, constraints and traps. →
 `npm run translate:compile` and `translate:check`; then `npm run build`, then `wp acorn optimize`. Editor loads clean, the front end
 ships no block React, the JSON-LD validates, the checklist below passes.
 
-**12 — Deploy.** `bin/deploy staging push` (it builds first) and report the staging URL. Production
+**12 — Deploy.** First time on a server: `bin/deploy staging bootstrap --plan`, show it, ask which
+components (plugins, uploads, database) and confirm, then run with `--confirm-bootstrap=<slug>`.
+Afterwards: `bin/deploy staging push` (it builds first) and report the staging URL. Production
 only when the user asks for it explicitly: `bin/deploy production push --dry-run` to show the diff,
 then `--confirm-production=<slug>`. Commit only if asked. → `remote-environments.md`
 
@@ -192,7 +196,7 @@ Read this table first whenever something "doesn't show up but throws no error".
 | `references/project-memory.md` | Writing the project's CLAUDE.md as a deliverable |
 | `references/acf-usage.md` | Only for projects that already have ACF — including how to get off it |
 
-**Assets to copy, not rewrite:** `assets/gitignore`, `assets/bin/deploy`, `assets/bin/translate-check`, `assets/env.example`,
+**Assets to copy, not rewrite:** `assets/gitignore`, `assets/bin/deploy`, `assets/deploy-plugins.txt`, `assets/bin/translate-check`, `assets/env.example`,
 `assets/claude/settings.json`, `assets/claude/hooks/deploy-guard.sh`.
 
 ## Definition of done
@@ -224,4 +228,5 @@ Read this table first whenever something "doesn't show up but throws no error".
 - [ ] Every rename or format change shipped with an idempotent migration script, and its per-environment
       status is recorded.
 - [ ] `npm run build` + `wp acorn optimize` succeed; editor and front end both clean.
+- [ ] First deploy done with `bootstrap` after the user confirmed its plan; later ones with `push`.
 - [ ] Deployed to staging through `bin/deploy`; production untouched unless explicitly requested.

@@ -155,13 +155,13 @@ nothing, stop and fix `.gitignore` before anything else.
 
 ## 3. Deploy scripts and guard rails — at once, not at the end
 
-Copy `assets/bin/deploy` to `bin/deploy` (see `remote-environments.md`) in the kickoff, not when the site is "ready": the
+Copy `assets/bin/deploy` to `bin/deploy` and `assets/deploy-plugins.txt` to `deploy-plugins.txt` (ask which plugins the site needs; the theme itself needs none) (see `remote-environments.md`) in the kickoff, not when the site is "ready": the
 first staging push should be a non-event. Then run `bin/deploy selftest` and `bin/deploy staging
 doctor` (the latter only once the user confirms the server exists).
 
 Copy `assets/claude/settings.json` to `.claude/settings.json` (merge if one exists) and
 `assets/claude/hooks/deploy-guard.sh` to `.claude/hooks/`. The settings put `git commit/push/tag`
-and `bin/deploy production` under `ask`, and deny reading `.env`.
+`bin/deploy production` and `bin/deploy staging bootstrap` under `ask`, and deny reading `.env`.
 
 `ask` beats any `allow`, so these always produce a human prompt. The `deny` on `.env` keeps secrets
 out of transcripts; the guard hook (`remote-environments.md`) also blocks `cat .env` and friends,

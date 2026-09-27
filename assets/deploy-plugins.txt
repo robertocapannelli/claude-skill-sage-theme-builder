@@ -1,0 +1,7 @@
+# deploy-plugins.txt — plugins the site needs on every environment, one folder slug per line.
+# Committed to git. Read by `bin/deploy <env> bootstrap`, which uploads each folder from
+# wp-content/plugins/<slug>/ (the exact local version) and activates it on the server.
+#
+# The theme itself never depends on a plugin (it must render with zero plugins active): list here
+# what the SITE needs — forms, SEO, cache, a licensed plugin — agreed with the user.
+# Leave the list empty if the site needs none. Comments (#) and blank lines are ignored.
