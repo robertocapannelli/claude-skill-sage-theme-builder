@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# bin/translate-check — fail if any translation catalog has untranslated or fuzzy entries,
+# or if the mandatory Italian catalog is missing. Run from anywhere; paths are repo-relative.
+# Needs GNU gettext (msgfmt): brew install gettext
+set -uo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+command -v msgfmt >/dev/null || { echo "translate-check: msgfmt not found (brew install gettext)" >&2; exit 1; }
+
+shopt -s nullglob
+theme_it=(wp-content/themes/*/resources/lang/it_IT.po)
+[[ ${#theme_it[@]} -gt 0 ]] || { echo "✗ missing mandatory theme catalog resources/lang/it_IT.po" >&2; exit 1; }
+
+status=0
+for f in wp-content/themes/*/resources/lang/*.po wp-content/mu-plugins/*/lang/*.po; do
+    stats="$(LC_ALL=C msgfmt --statistics -o /dev/null "$f" 2>&1)"
+    if [[ "$stats" == *untranslated* || "$stats" == *fuzzy* || "$stats" == *error* ]]; then
+        echo "✗ $f — $stats"; status=1
+    else
+        echo "✓ $f — $stats"
+    fi
+done
+exit $status

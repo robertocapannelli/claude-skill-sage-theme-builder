@@ -85,7 +85,7 @@ editor filters — and the wp-scripts bundle for the blocks themselves.
   "textdomain": "sage",
   "supports": { "html": false, "multiple": true },
   "attributes": {
-    "heading": { "type": "string", "default": "Frequently asked questions" },
+    "heading": { "type": "string", "default": "" },
     "items": {
       "type": "array",
       "default": [{ "q": "", "a": "", "open": false }]
@@ -102,6 +102,8 @@ editor filters — and the wp-scripts bundle for the blocks themselves.
   editor break the markup contract your schema and CSS depend on.
 - `textdomain` must match the PHP domain, or `wp_set_script_translations()` finds nothing (`i18n.md`).
 - Repeaters are `type: "array"` with an object-shaped default.
+- **Visible copy defaults to `""`.** `block.json` defaults are not translatable, so copy typed there
+  is English on an Italian site. Seed placeholder copy through a default variation instead (below).
 - **Defaults are load-bearing.** `render_block()` fills every unset attribute from `block.json` on
   every render, so a block saved as a bare void comment `<!-- wp:mytheme/faq /-->` renders today's
   defaults, not the ones it was inserted with. Changing a default rewrites published pages silently —
@@ -291,8 +293,34 @@ Rules:
 
 - **No visible literal in `render.php`.** The only strings allowed in the template are
   screen-reader-only labels and structural ARIA text, and those go through `__()` (`i18n.md`).
-  Defaults in `block.json` carry placeholder copy, so the block looks right on insert — and are
-  load-bearing (`content-migrations.md`).
+  Placeholder copy that makes the block look right on insert comes from the default variation below,
+  never from `block.json` defaults.
+
+### Placeholder copy: a default variation, in the editor's language
+
+`block.json` defaults can't be translated, and changing them later rewrites published pages
+(`content-migrations.md`). So copy attributes default to `""`, and the copy a new block starts with is
+written **into its attributes at insertion** by a default variation defined in JS, where `__()` works:
+
+```js
+registerBlockType(metadata, {
+    variations: [{
+        name: 'default',
+        isDefault: true,
+        title: metadata.title,
+        scope: ['inserter'],
+        attributes: {
+            heading: __('Frequently asked questions', 'sage'),
+            items: [{ q: __('Question', 'sage'), a: __('Answer', 'sage'), open: false }],
+        },
+    }],
+    edit, save: () => null,
+});
+```
+
+The source strings are English and go through the Italian catalog like every other string; the
+inserted block stores Italian copy as content, which is what it is. And since nothing visible lives in
+the defaults, changing placeholder copy later is a code change, not a database migration.
 - **Images always come with alt control** and the attachment id (for `srcset` via
   `wp_get_attachment_image()`), never a URL alone.
 - **Every attribute in `block.json` has a control in `edit()`**, and every control writes an attribute
@@ -343,7 +371,9 @@ if ($source_id) {
 `render_block()` fills unset attributes from `block.json` defaults on every render, and those defaults
 are not empty — so a block carrying only `postId` would show the default copy forever. Selecting a
 source must explicitly write empty values; deselecting must restore the defaults **read from the
-imported metadata**, never re-typed:
+imported metadata**, never re-typed. (With copy defaults at `""`, `blank` and `defaults` coincide for
+copy fields; the pattern still matters for everything else, and for older blocks with non-empty
+defaults.)
 
 ```js
 const INHERITED = ['title', 'text', 'imageId', 'imageUrl', 'imageAlt', 'url'];

@@ -2,6 +2,17 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 2.1.0 — 2026-09-27
+
+- **English-only codebase, mandatory translations** (`i18n.md`, principle 14): code, comments and
+  every source string in English; Italian catalog created at kickoff for theme and mu-plugin; other
+  languages on request; `assets/bin/translate-check` fails on a missing Italian catalog or on
+  untranslated/fuzzy entries.
+- Block placeholder copy moved from `block.json` defaults (untranslatable) to a default variation
+  seeded with `__()` (`native-blocks.md`).
+- Kickoff asks for site languages and sets up the catalogs (`project-kickoff.md`).
+- One new eval.
+
 ## 2.0.1 — 2026-09-27
 
 - Public `README.md` for the GitHub repository (not packaged in the skill zip).

@@ -133,7 +133,18 @@ Repeat the reminder in the hand-off summary.
 Staging and production get their own admin accounts created by the user on the server — the local
 password is never reused there.
 
-## 5. Company logo
+## 5. Languages
+
+The codebase is English; the site speaks through translation files (`i18n.md`). Ask:
+
+- Site language(s)? **Italian is the default and always gets a catalog.** Any other language adds its
+  own catalog from the same POT.
+
+Then: `resources/lang/sage.pot` + `it_IT.po`, the mu-plugin's `<domain>-it_IT.po`, the `translate*`
+npm scripts, the `load_textdomain()` hook. On a site built from scratch also set the site language:
+`wp language core install it_IT --activate`.
+
+## 6. Company logo
 
 Ask for the company logo (SVG preferred, otherwise a PNG at least 640 px wide) if the design does not
 already contain it, save it as `resources/images/logo.svg`, and wire the login screen at once
@@ -147,4 +158,5 @@ already contain it, save it as `resources/images/logo.svg`, and wire the login s
       `.env.example` committed-ready.
 - [ ] `bin/deploy` in place; `selftest` passes; `.claude/settings.json` + guard hook installed.
 - [ ] New site only: admin user and email asked, never `admin`; password-change reminder given.
+- [ ] `it_IT.po` for theme and mu-plugin exist; any extra language asked; `translate:check` wired.
 - [ ] Logo in `resources/images/`, login screen branded.
