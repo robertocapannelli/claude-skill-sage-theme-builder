@@ -13,7 +13,7 @@ description: >-
   real project on disk.
 allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
 metadata:
-  version: "2.3.0"
+  version: "2.4.0"
 ---
 
 # Sage Theme Builder
@@ -97,7 +97,8 @@ Work through these in order; skip ahead when the request is scoped to one part (
 testimonial block" → Phase 1 check, then Phase 5).
 
 **0 — Kickoff** (new project; on an existing one, a gap check after recon — add what is missing,
-overwrite nothing). Ask for git remote and branch → `git init` + `origin`; ask for the environment data
+overwrite nothing). On a new theme, **ask for the WordPress theme name first** and confirm the slug
+derived from it (folder, `style.css` with `Update URI: false`, block namespace, prefixes); then ask for git remote and branch → `git init` + `origin`; ask for the environment data
 → `.env.example` copied verbatim from `assets/env.example` (every key, production included, fictitious values) + `.env` with the same keys; copy `bin/deploy`, `.claude/settings.json` and the guard hook from this
 skill's `assets/`; ask which languages besides Italian → `sage.pot` + `it_IT.po`; ask for the company logo; on a site built from scratch, ask for the admin username
 and email, install, remind to change the password. → `project-kickoff.md`
@@ -196,6 +197,7 @@ Read this table first whenever something "doesn't show up but throws no error".
 
 ## Definition of done
 
+- [ ] New theme: name asked, slug confirmed, `style.css` header replaced (with `Update URI: false`).
 - [ ] Git initialised with the user's remote; no commit or push made without an explicit request.
 - [ ] `.env.example` has every key (local, staging, production) with fictitious values; `.env`
       (gitignored and untracked, `chmod 600`) has the same keys; `.env.example` is tracked; `bin/deploy check-env` shown to the user;
