@@ -27,7 +27,9 @@ bin/deploy staging bootstrap --plan                   # FIRST deploy: what would
 bin/deploy staging bootstrap --confirm-bootstrap=<slug> [--with-db]   # after the user confirms
 bin/deploy production push --confirm-production=<slug>   # explicit request only — see below
 bin/deploy <env> wp <args…>                           # remote wp-cli (ssh only)
-bin/deploy <env> db-backup                            # remote DB dump → .deploy-backups/ (ssh only)
+bin/deploy <env> backup                               # snapshot now (every deploy does it anyway)
+bin/deploy <env> backups                              # list the local backups
+bin/deploy <env> restore <id|latest> --confirm-restore=<slug> [--files-only|--db-only] [--dry-run]
 ```
 
 ## Every deploy builds
@@ -48,12 +50,55 @@ never trusted to contain a current build. `push` always, in this order:
 
 A dry run builds too: the diff it prints is only honest against a fresh build.
 
+## Every deploy starts from a backup — and one command rolls it back
+
+Before **any** change to a server — `push`, `bootstrap`, `eval-file`, on staging and on production —
+`bin/deploy` snapshots everything that deploy can overwrite into
+`.deploy-backups/<slug>-<env>-<timestamp>/`:
+
+| In the backup | How |
+|---|---|
+| remote theme folder | exact copy (rsync/lftp) |
+| remote `mu-plugins/` | exact copy (includes the host's own mu-plugins) |
+| every plugin the deploy uploads (`bootstrap`) | exact copy of each folder |
+| database (ssh) | `wp db export`, gzipped, checked non-empty |
+| `manifest` | environment, time, the commit deployed before, what was saved, what did not exist yet |
+
+- **If the backup fails, the deploy does not start.** A deploy without a restore point never happens.
+- Over **sftp** the database cannot be exported (no remote wp-cli): the script says so; a `push` does
+  not touch the database, but a release that changes data needs a DB backup from the hosting panel
+  first — tell the user before deploying.
+- `uploads/` is not in the backup: deploys only add media and never delete them on the server.
+- Unchanged files are hard-linked to the previous backup, so keeping several costs little disk.
+  `BACKUP_KEEP` (default 10) backups are kept per environment; the oldest are pruned.
+- Backups contain the database — personal data included. They live only in `.deploy-backups/`
+  (gitignored, `chmod 700`), never in git, never pasted into the conversation.
+
+After every deploy, **tell the user the backup id and the rollback command** the script prints.
+
+### Rolling back
+
+```
+bin/deploy staging backups                                   # what is there
+bin/deploy staging restore latest --dry-run                  # what would change
+bin/deploy staging restore <id> --confirm-restore=<slug>     # files exact + database, then cache flush
+```
+
+`restore` puts the saved folders back **exactly** (files added by the bad deploy are removed), imports
+the saved database, then runs `cache flush`, `rewrite flush`, `acorn optimize`. `--files-only` /
+`--db-only` narrow it. Folders that did not exist before the deploy are left in place (reported).
+
+A restore overwrites the server, so it follows the same rule as a deploy: show the user what will be
+restored (`--dry-run`), get an explicit yes, then pass `--confirm-restore=<slug>` — plus
+`--confirm-production=<slug>` on production. In an emergency, ask one short question and act on the
+answer; don't improvise another route to the server.
+
 ## First deploy: `bootstrap`, always confirmed by the user
 
 The first time a site goes to a server — typically staging — `push` is not enough: the server has
 WordPress but none of the site. `bootstrap` transfers, in this order:
 
-1. **remote DB backup** (when the database is included);
+1. **backup** of everything below that already exists on the server, database included (as for every deploy);
 2. **theme + mu-plugins** — through `push`, so the build runs;
 3. **plugins the site needs** — the folders listed in `deploy-plugins.txt`, uploaded from
    `wp-content/plugins/<slug>/` so the server gets exactly the local versions (premium ones included);
