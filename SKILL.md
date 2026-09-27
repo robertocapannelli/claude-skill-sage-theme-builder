@@ -6,14 +6,14 @@ description: >-
   to WordPress, design tokens and theme.json, native Gutenberg blocks, block previews that don't
   match the front end, post meta and settings without ACF, schema.org JSON-LD, theme or block tests,
   renaming a block/CPT/option in an existing site, deciding what belongs in the theme versus a
-  mu-plugin, starting a new WordPress project (git remote, .env for local/staging/production, first
+  mu-plugin, starting a new WordPress project (git remote, deploy config for staging/production, first
   admin user), deploying to staging or production, or branding the wp-login screen. Also on Italian
   phrasings ("tema Sage", "nuovo sito WordPress", "fammi un blocco Gutenberg", "l'anteprima
   nell'editor non torna", "rinomina il blocco", "deploy in staging", "metti online"). Runs against a
   real project on disk.
 allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
 metadata:
-  version: "2.6.1"
+  version: "3.0.0"
 ---
 
 # Sage Theme Builder
@@ -80,11 +80,16 @@ architecture, different build commands.
    never as a follow-up to a staging deploy. The **first deploy** to a server (`bootstrap`: theme,
    mu-plugins, needed plugins, uploads, optionally the database) always shows its plan and waits for
    the user's explicit confirmation. **Every deploy first backs up** what it can overwrite (theme,
-   mu-plugins, uploaded plugins, database) and stops if the backup fails; `bin/deploy <env> restore`
-   rolls back in one command, after the user confirms. Remote access is **always by SSH key** — the keys already
-   on the computer, never a password. See `references/remote-environments.md`.
-11. **Secrets never pass through the conversation.** `.env` holds local/staging/production config,
-   is **always gitignored and never tracked**, `chmod 600`; `.env.example` is **always tracked**; secrets are written as `CHANGE_ME` for the user to fill in.
+   mu-plugins, database) and stops if the backup fails; `bin/deploy <env> restore` rolls back in one
+   command, after the user confirms. The environment is always the first argument, with no default;
+   production refusals live in the code. Remote access is **only by a dedicated SSH key** per project
+   and environment (`key-setup`), never a password. See `references/remote-environments.md`.
+11. **The repository holds no config and no secret.** Hosts, users, server paths, remote URLs, keys,
+   backups, dumps and logs live in `~/.config/<project-slug>/` (700/600, enforced) — one conf per
+   environment, parsed never sourced, isolated on every load. The repo keeps only `PROJECT_SLUG` in
+   `bin/deploy` and templates with fictitious values. No password anywhere: DB credentials are read by
+   wp-cli from each `wp-config.php`. Claude never reads those files and never collects their values in
+   the chat: the user fills them, `check-env` reports what is missing without printing values.
 12. **Users are the owner's.** On a site built from scratch, ask which admin username (never `admin`)
    and email to create, and remind the user to change the generated password. On an existing site,
    never create or change users unless asked.
@@ -103,7 +108,7 @@ testimonial block" → Phase 1 check, then Phase 5).
 **0 — Kickoff** (new project; on an existing one, a gap check after recon — add what is missing,
 overwrite nothing). On a new theme, **ask for the WordPress theme name first** and confirm the slug
 derived from it (folder, `style.css` with `Update URI: false`, block namespace, prefixes); then ask for git remote and branch → `git init` + `origin`; ask for the environment data
-→ `.env.example` copied verbatim from `assets/env.example` (every key, production included, fictitious values) + `.env` with the same keys; copy `bin/deploy`, `.claude/settings.json` and the guard hook from this
+→ copy `bin/deploy` (set `PROJECT_SLUG`) and the conf templates, `bin/deploy init`, `key-setup` per environment, the user fills `~/.config/<slug>/*.conf`, `check-env`; copy `.claude/settings.json` and the guard hook from this
 skill's `assets/`; ask which languages besides Italian → `sage.pot` + `it_IT.po`; ask for the company logo; on a site built from scratch, ask for the admin username
 and email, install, remind to change the password. → `project-kickoff.md`
 
@@ -181,7 +186,7 @@ Read this table first whenever something "doesn't show up but throws no error".
 
 | Read this | When |
 |---|---|
-| `references/project-kickoff.md` | New project: git + remote, `.env` for three environments, deploy guard rails, first admin, logo |
+| `references/project-kickoff.md` | New project: git + remote, deploy config outside the repo (`~/.config/<slug>/`), SSH keys, guard rails, first admin, logo |
 | `references/architecture.md` | Project structure, bootstrap, two bundlers, theme↔mu-plugin boundary, composers, escaping |
 | `references/design-to-blade.md` | Figma/HTML → tokens → Blade; Tailwind v4 `@theme`, `theme(static)`, `@source`, self-hosted fonts |
 | `references/navigation.md` | WP menus, no-menu placeholder, offcanvas, normalized menu reader |
@@ -200,16 +205,16 @@ Read this table first whenever something "doesn't show up but throws no error".
 | `references/project-memory.md` | Writing the project's CLAUDE.md as a deliverable |
 | `references/acf-usage.md` | Only for projects that already have ACF — including how to get off it |
 
-**Assets to copy, not rewrite:** `assets/gitignore`, `assets/bin/deploy`, `assets/deploy-plugins.txt`, `assets/bin/translate-check`, `assets/env.example`,
+**Assets to copy, not rewrite:** `assets/gitignore`, `assets/bin/deploy`, `assets/deploy-plugins.txt`, `assets/bin/translate-check`, `assets/deploy.conf.example`, `assets/deploy.local.conf.example`,
 `assets/claude/settings.json`, `assets/claude/hooks/deploy-guard.sh`.
 
 ## Definition of done
 
 - [ ] New theme: name asked, slug confirmed, `style.css` header replaced (with `Update URI: false`).
 - [ ] Git initialised with the user's remote; no commit or push made without an explicit request.
-- [ ] `.env.example` has every key (local, staging, production) with fictitious values; `.env`
-      (gitignored and untracked, `chmod 600`) has the same keys; `.env.example` is tracked; `bin/deploy check-env` shown to the user;
-      `bin/deploy selftest` passes; `.claude/settings.json` + guard hook installed.
+- [ ] No config or secret in the repository: `~/.config/<slug>/` (700) holds `staging.conf`,
+      `production.conf`, `local.conf` (600) filled by the user; dedicated keys created with `key-setup`;
+      `bin/deploy check-env` clean and shown to the user; no legacy `.env` (or `migrate-env` run).
 - [ ] New site only: admin username/email asked (not `admin`), password-change reminder given.
 - [ ] The login screen shows the company logo.
 - [ ] Design tokens live only in `@theme`; `theme.json` is generated, not hand-edited; `theme(static)`

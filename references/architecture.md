@@ -188,6 +188,6 @@ does not exist yet, so chrome never renders a broken link on a fresh install.
 
 This skill does not choose or install the local dev tooling — Devilbox/DDEV/Local/Valet, containers,
 hosts. That stays stack-agnostic. What it does own, from the kickoff, is the **description** of all
-three environments: one `.env` with local, staging and production data (how `wp` is invoked locally,
-URLs, hosts, roots), and `bin/deploy` as the one door to the remote ones. See `project-kickoff.md`
+three environments — one conf per environment in `~/.config/<project-slug>/`, outside the repository
+(how `wp` is invoked locally, URLs, hosts, roots) — and `bin/deploy` as the one door to the remote ones. See `project-kickoff.md`
 and `remote-environments.md`.

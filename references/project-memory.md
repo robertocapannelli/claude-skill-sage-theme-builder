@@ -19,7 +19,7 @@ in the repository's `CLAUDE.md` as you go — it is part of the handover, not a 
 - **Decisions with a cost if reversed.** Why the content model has no ACF, why schema is emitted
   unconditionally, why a coupling was accepted. Not the decision alone — the consequence of undoing it.
 - **The working agreements**, verbatim: commits and pushes only on explicit request; production
-  deploys only on explicit request, always via `bin/deploy`; `.env` is the user's — ask, never read.
+  deploys only on explicit request, always via `bin/deploy`; the deploy config in `~/.config/<slug>/` is the user's — ask, never read.
   They are in `.claude/settings.json` too, but a rule written in prose is the one a new session reads.
 - **The boundary rules** of the project: what lives in the theme, what lives in the mu-plugin, what
   never gets invented without asking.

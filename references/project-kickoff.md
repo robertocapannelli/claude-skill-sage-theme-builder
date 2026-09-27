@@ -3,8 +3,8 @@
 Run this **before the first line of theme code** on a new project, and as a gap check on an existing
 one (skip what already exists, never overwrite it). The order matters: the theme name first, because
 the folder, the block namespace and every prefix derive from it; git next, so every later file lands
-in a tracked tree; `.env` second, because the deploy scripts read it; the admin user last,
-because it needs a working database.
+in a tracked tree; the deploy config third — outside the repository — because the deploy scripts
+read it; the admin user last, because it needs a working database.
 
 Everything here is gathered by **asking the user** — use the question tool when available, plain
 questions otherwise. Never invent a remote URL, a host, a username or an email.
@@ -25,7 +25,8 @@ Ask for the display name, then propose the slug derived from it and have the use
 
 The slug is the theme's identity everywhere, so it is fixed now:
 
-- theme folder `wp-content/themes/<slug>/` and `THEME_DIR` / `PROJECT_SLUG` in `.env`;
+- theme folder `wp-content/themes/<slug>/` and `PROJECT_SLUG` at the top of `bin/deploy` (the only
+  project fact the deploy script holds; it names `~/.config/<slug>/` and the SSH keys);
 - `style.css` header;
 - the block namespace and inserter category — `mytheme/…` in every example of these references stands
   for `<slug>/…`;
@@ -63,7 +64,7 @@ Ask, in one round:
 |---|---|
 | Remote repository URL (GitHub/GitLab/Bitbucket, SSH or HTTPS)? Does it already exist? | `git remote add origin` — never guess the owner or name |
 | Default branch name? (default `main`) | `git init -b <branch>` |
-| Is the repository the whole site root or the theme only? | Decides where `.gitignore`, `.env`, `bin/` live (default: site root, see `architecture.md`) |
+| Is the repository the whole site root or the theme only? | Decides where `.gitignore` and `bin/` live (default: site root, see `architecture.md`) |
 
 Then check `git config user.name` / `user.email`; ask only if they are empty for this repository.
 
@@ -74,28 +75,10 @@ git remote -v                      # show it back to the user
 ```
 
 `.gitignore` at the repository root: **copy `assets/gitignore` verbatim** (merge its lines into an
-existing one; never replace the `.env` block with a broader pattern like `.env*`, which would also
-ignore `.env.example`).
-
-### `.env` ignored, `.env.example` tracked — always
-
-| File | Git |
-|---|---|
-| `.env` | **always ignored**, never tracked, never `git add -f` |
-| `.env.example` | **always tracked** — it is the only place the project's keys are documented |
-
-Verify right after creating both files, and stop to fix `.gitignore` if any line fails:
-
-```bash
-git check-ignore -q .env          && echo "ok: .env ignored"          # must print
-git check-ignore -q .env.example  || echo "ok: .env.example tracked"  # must print
-git ls-files --error-unmatch .env 2>/dev/null && echo "DANGER: .env is tracked"   # must print nothing
-git add .env.example              # staged now; it lands in the first commit the user asks for
-```
-
-If `.env` turns out to be tracked (an old repository, a `git add -f`), ignoring it is not enough:
-`git rm --cached .env`, tell the user, and treat every secret it contained as exposed if it was ever
-pushed — rotate them.
+existing one). It ignores dependencies, build output, uploads, core — and a legacy `.env` as a safety
+net. It ignores **no deploy config**, because there is none in the repository to ignore: the config
+lives in the user profile (section 2). The templates `bin/deploy.conf.example` and
+`bin/deploy.local.conf.example` hold fictitious values and are **always tracked**.
 
 Build output is ignored **on purpose**: it never drifts from the source, and it is why every deploy
 builds (`remote-environments.md`).
@@ -109,63 +92,87 @@ commit message and stop. "Go ahead" on a previous task is not a standing permiss
 The project's `.claude/settings.json` backs this with an `ask` rule (below), so a slip produces a
 prompt instead of a commit.
 
-## 2. `.env` — one file, three environments
+## 2. Deploy config — outside the repository, one file per environment
 
-Two files at the repository root, both **complete from the first minute**:
+The repository never contains a secret, a host, a server path or a real URL of a remote environment.
+A gitignored file inside the working tree is not enough: one `git add -f`, an rsync of the folder, a
+zip of the repo or a tool that indexes the workspace carries it away. So the config lives in the user
+profile, and the only thing the repository knows is the project slug:
 
-| File | In git | Content |
-|---|---|---|
-| `.env.example` | committed | **every** key — project, local, staging **and production** — each with a **fictitious value** and a comment |
-| `.env` | gitignored, `chmod 600` | the same keys, real values where known, the fictitious value where not yet known |
+```
+~/.config/<project-slug>/            700 — bin/deploy refuses to run otherwise
+├── staging.conf                     600 — template: bin/deploy.conf.example
+├── production.conf                  600 — same template
+├── local.conf                       600 — template: bin/deploy.local.conf.example (LOCAL_URL, https)
+├── backups/  dumps/                 700 — DB dumps hold personal data and password hashes
+└── deploy.log
+~/.ssh/<project-slug>_<env>_ed25519  dedicated key per environment (bin/deploy key-setup <env>)
+```
 
-**`.env.example` is created by copying `assets/env.example` byte for byte (`cp`), never by retyping
-it and never with empty values.** An `.env.example` with bare `KEY=` lines, or missing the production
-block, is a defect: whoever starts the project has to reconstruct the keys by hand. If the project
-needs an extra key, add it to both files with a fictitious value and a comment.
+Steps, in order:
 
-Fictitious values follow one convention: they contain `example` (RFC 2606 names like
-`ssh.example.com`, `/var/www/example-project/…`, `example_user`) or are `CHANGE_ME` for secrets.
-`bin/deploy` treats any such value as **not configured** and refuses to deploy with it, so a
-placeholder can sit in `.env` safely until the real value arrives. `bin/deploy check-env` lists what is
-still missing.
+1. Copy `assets/bin/deploy` → `bin/deploy`, `assets/deploy.conf.example` → `bin/deploy.conf.example`,
+   `assets/deploy.local.conf.example` → `bin/deploy.local.conf.example` — **verbatim** (`cp`), then set
+   `PROJECT_SLUG` at the top of `bin/deploy` to the slug confirmed in step 0 (a `sed` on the one line
+   `PROJECT_SLUG="example-project"`; also `THEME_SLUG` if the theme folder differs). Replace
+   `example-project` with the slug in `.claude/settings.json` too (section 3).
+2. `bin/deploy init` — creates `~/.config/<slug>/` (700), `backups/`, `dumps/`, and copies the templates
+   into `staging.conf`, `production.conf`, `local.conf` (600). It never overwrites an existing file.
+3. `bin/deploy key-setup staging` and `bin/deploy key-setup production` — one dedicated ed25519 key per
+   environment, printed as a **public** key for the user to add on the server (hosting panel → SSH
+   keys). Offer `--passphrase` if the user prefers a passphrase kept in the macOS Keychain; that
+   variant is interactive, so the user runs it in their own terminal.
+4. **The user fills the three confs by hand.** Ask them, in one round, for what they need to know —
+   host (or `~/.ssh/config` alias), port, SSH user, absolute WordPress root on the server, public URL
+   (https) for each environment; the local URL (https) and how wp-cli runs locally — but **do not
+   collect the values in the chat to write them yourself**: tell the user which file and key each
+   answer goes to. Claude cannot read or edit those files (section 3), by design.
+5. `bin/deploy check-env` — lists keys still holding placeholders and missing keys, **never values**.
+   Show its output; repeat until clean. Then `bin/deploy staging doctor` once the server exists.
 
-Then build `.env`: ask the user, in one round, for what they already know —
+What the confs deliberately do **not** contain:
 
-| Key group | Ask |
-|---|---|
-| `PROJECT_SLUG`, `THEME_DIR` | already known from step 0: the theme slug, `wp-content/themes/<slug>` |
-| `LOCAL_*` | local URL, how `wp` is invoked locally (`wp`, `ddev wp`, `docker exec …`), DB name/user/host |
-| `STAGING_*`, `PRODUCTION_*` | URL; transport (`ssh` preferred, `sftp` if the host has no shell); host (or `~/.ssh/config` alias), port, user; absolute WordPress root on the server. **Never a password**: access is by the SSH keys already on the computer (`SSH_KEY=default`), or a specific key path if the user names one |
+- **No password of any kind.** The server is reached with the dedicated SSH key only
+  (`IdentitiesOnly=yes`, password and keyboard-interactive auth disabled). The remote database
+  credentials are read by wp-cli from the server's `wp-config.php`; the local ones from the local
+  `wp-config.php`. There is no `*_DB_PASSWORD` or `*_SFTP_PASSWORD` key, and the packaging check
+  refuses a template that adds one.
+- **No "use my usual keys".** `DEPLOY_KEY=default` is refused: with the agent's keys ssh tries every
+  identity it holds, and a personal key that also opens other clients' servers could be the one that
+  authenticates — neither the log nor the hook could tell. A dedicated key is revocable per project
+  and environment and can be restricted on the server side.
 
-— and write `.env` **once**, as a new file containing **every** key of `.env.example`: the answers
-replace the fictitious values, everything unanswered keeps its fictitious value, secrets stay
-`CHANGE_ME`. Never drop a key because its value is unknown. Finish with `bin/deploy check-env` and show
-the user the list of keys still to fill.
+Placeholder convention, unchanged: a value containing `example` or `CHANGE_ME` counts as not
+configured; `bin/deploy` stops and names the key.
 
-From then on `.env` belongs to the user: the project settings deny reading and editing it and the guard
-hook blocks it in the shell, so later changes are made by hand — tell the user which key to change
-rather than asking them to paste it.
+### Migrating a project that still has a `.env`
 
-Deliberately **absent**: remote database credentials. With SSH, remote `wp-cli` reads them from the
-remote `wp-config.php`; with SFTP there is no remote `wp-cli` to use them. A secret with no consumer is
-pure risk.
-
-After writing: `chmod 600 .env`, and verify `git check-ignore .env` prints `.env` — if it prints
-nothing, stop and fix `.gitignore` before anything else.
+`bin/deploy migrate-env` reads the old repo-root `.env` (parsed, never sourced), writes
+`STAGING_*`/`PRODUCTION_*` into `staging.conf`/`production.conf` as `DEPLOY_*`, `LOCAL_URL`/
+`LOCAL_WP_CMD` into `local.conf`, drops password keys and `LOCAL_DB_*`, and prints **key names only**.
+It refuses to overwrite existing confs and warns if `.env` ever appears in git history (then every
+secret it held counts as exposed: rotate it). Then run `key-setup` for each environment (a
+`SSH_KEY=default` line is dropped), `check-env`, and — **after the user confirms in the conversation**
+— `bin/deploy migrate-env --delete-env`.
 
 ## 3. Deploy scripts and guard rails — at once, not at the end
 
-Copy `assets/bin/deploy` to `bin/deploy` and `assets/deploy-plugins.txt` to `deploy-plugins.txt` (ask which plugins the site needs; the theme itself needs none) (see `remote-environments.md`) in the kickoff, not when the site is "ready": the
-first staging push should be a non-event. Then run `bin/deploy selftest` and `bin/deploy staging
-doctor` (the latter only once the user confirms the server exists).
+Copy also `assets/deploy-plugins.txt` → `deploy-plugins.txt` (ask which plugins the site needs; the
+theme itself needs none), `assets/claude/settings.json` → `.claude/settings.json` (merge if one exists;
+replace `example-project` with the slug) and `assets/claude/hooks/deploy-guard.sh` →
+`.claude/hooks/`. Do it in the kickoff, not when the site is "ready": the first staging push should be
+a non-event. `bin/deploy selftest` must pass.
 
-Copy `assets/claude/settings.json` to `.claude/settings.json` (merge if one exists) and
-`assets/claude/hooks/deploy-guard.sh` to `.claude/hooks/`. The settings put `git commit/push/tag`
-`bin/deploy production` and `bin/deploy staging bootstrap` under `ask`, and deny reading `.env`.
+What the settings and the hook enforce:
 
-`ask` beats any `allow`, so these always produce a human prompt. The `deny` on `.env` keeps secrets
-out of transcripts; the guard hook (`remote-environments.md`) also blocks `cat .env` and friends,
-which the `Read` rule does not cover. Note the rule in the project's `CLAUDE.md`.
+| Rule | Where |
+|---|---|
+| `git commit/push/tag`, `bin/deploy production …`, `staging bootstrap`, `staging restore`, `clone-from-prod`, `migrate-env` always prompt the user | `ask` in `settings.json` (`ask` beats any `allow`) |
+| No `Read`/`Edit`/`Write` on `~/.config/<slug>/**`, no `Read` on `~/.ssh/**` or `.env` | `deny` in `settings.json` |
+| No raw `ssh`/`scp`/`sftp`/`rsync`/`lftp`/`ssh-keygen`/`ssh-add` | `deny` + hook |
+| No shell command that names `~/.config/<slug>`, `~/.ssh/<slug>_*`, a legacy `.env` or a deploy host (`cat`, `grep`, `source`, `cp`… all of them) | hook |
+
+Note the rules in the project's `CLAUDE.md` (`project-memory.md`).
 
 ## 4. First WordPress admin — only for sites built from scratch
 
@@ -180,8 +187,8 @@ Ask:
 2. Which **email** for that account?
 
 ```bash
-$LOCAL_WP_CMD core install \
-  --url="$LOCAL_URL" --title="<site title>" \
+wp core install \
+  --url="<local URL, https>" --title="<site title>" \
   --admin_user="<asked>" --admin_email="<asked>" \
   --skip-email
 ```
@@ -216,13 +223,14 @@ already contain it, save it as `resources/images/logo.svg`, and wire the login s
 - [ ] New theme: name asked and slug confirmed by the user; folder, `style.css` header (with
       `Update URI: false`), block namespace, prefixes, `composer.json`/`package.json` names all use it.
 - [ ] `origin` set and shown back to the user; default branch named; no commit made without a request.
-- [ ] `.gitignore` copied from `assets/gitignore`; `.env` ignored and untracked, `.env.example` not
-      ignored and staged (`git add .env.example`) — the three checks above pass.
-- [ ] `.env.example` is a verbatim copy of `assets/env.example`: every key, production included, with
-      a fictitious value — no bare `KEY=` line.
-- [ ] `.env` has every key of `.env.example` (real values where known, secrets `CHANGE_ME`),
-      `chmod 600`, `git check-ignore .env` passes; `bin/deploy check-env` output shown to the user.
-- [ ] `bin/deploy` in place; `selftest` passes; `.claude/settings.json` + guard hook installed.
+- [ ] `.gitignore` copied from `assets/gitignore`; the repository holds no host, path, URL of a remote
+      environment, key or password — `git grep` for the hosts the user named finds nothing.
+- [ ] `bin/deploy` with the real `PROJECT_SLUG`; `bin/deploy.conf.example` and
+      `bin/deploy.local.conf.example` copied verbatim and tracked; `selftest` passes.
+- [ ] `bin/deploy init` done: `~/.config/<slug>/` 700, three confs 600, filled **by the user**;
+      `key-setup` run for both environments and the public keys added on the servers;
+      `check-env` clean and shown to the user. No legacy `.env` left (or `migrate-env` run).
+- [ ] `.claude/settings.json` (slug substituted) + guard hook installed.
 - [ ] New site only: admin user and email asked, never `admin`; password-change reminder given.
 - [ ] `it_IT.po` for theme and mu-plugin exist; any extra language asked; `translate:check` wired.
 - [ ] Logo in `resources/images/`, login screen branded.

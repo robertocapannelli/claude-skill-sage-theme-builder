@@ -1,11 +1,11 @@
 # .gitignore — copied verbatim from the sage-theme-builder skill (assets/gitignore).
 
 # ---- environment -----------------------------------------------------------------------------
-# .env holds real hosts and secrets: ALWAYS ignored, never tracked, never force-added.
-# .env.example holds every key with fictitious values: ALWAYS tracked.
+# Deploy config lives OUTSIDE the repository, in ~/.config/<project-slug>/ — nothing to ignore here
+# except a legacy .env, kept ignored as a safety net until `bin/deploy migrate-env` removes it.
+# bin/deploy.conf.example and bin/deploy.local.conf.example hold fictitious values: ALWAYS tracked.
 .env
 .env.*
-!.env.example
 
 # ---- dependencies and build output (rebuilt by every deploy) ----------------------------------
 node_modules/
@@ -14,9 +14,8 @@ wp-content/themes/*/public/build/
 wp-content/themes/*/public/blocks/
 
 # ---- deploy tooling ----------------------------------------------------------------------------
+# Built release only. Backups, dumps and logs live in ~/.config/<project-slug>/, never here.
 .deploy-build/
-.deploy-logs/
-.deploy-backups/
 
 # ---- WordPress: uploads and core (if the repository is the site root) --------------------------
 wp-content/uploads/

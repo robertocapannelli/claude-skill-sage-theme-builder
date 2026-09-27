@@ -1,0 +1,9 @@
+# bin/deploy.local.conf.example — template for THIS machine. Committed; holds no real value.
+#
+# Lives OUTSIDE the repository: ~/.config/<project-slug>/local.conf (600), created by `bin/deploy init`.
+# No database password here: wp-cli reads the local credentials from the local wp-config.php.
+
+LOCAL_URL=https://example-project.test        # local site URL — MUST be https (bin/deploy refuses http)
+LOCAL_WP_CMD="wp"                             # how wp-cli runs locally: "wp", "ddev wp", "docker exec -i <php> wp"
+# LOCAL_COMPOSER_CMD="composer"               # optional: how composer runs locally (derived from LOCAL_WP_CMD if unset)
+BACKUP_KEEP=10                                # backups kept per environment in ~/.config/<project-slug>/backups/
