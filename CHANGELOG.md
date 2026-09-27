@@ -2,6 +2,17 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 2.5.0 — 2026-09-27
+
+- **First deploy: `bin/deploy <env> bootstrap`** — theme + mu-plugins (built), the plugins listed in
+  the new committed `deploy-plugins.txt`, uploads, and optionally the database (`--with-db`: remote
+  backup, import, URL search-replace in plain and JSON-escaped form, prefix check), then theme/plugin
+  activation, `rewrite flush`, `acorn optimize`, and `blog_public = 0` on staging.
+- **Always confirmed by the user**: `bootstrap --plan` is shown first, the user chooses the components
+  and confirms; the script refuses without `--confirm-bootstrap=<slug>`, and `.claude/settings.json`
+  puts `bin/deploy staging bootstrap` under `ask`. Production also needs `--confirm-production`.
+- New asset `assets/deploy-plugins.txt`; one new eval.
+
 ## 2.4.0 — 2026-09-27
 
 - **Theme name asked first** on every new theme (kickoff step 0): display name → slug confirmed by the

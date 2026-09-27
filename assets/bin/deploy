@@ -6,12 +6,18 @@
 #   bin/deploy check-env                                 list .env keys still holding placeholder values
 #   bin/deploy <env> doctor                              read-only connectivity checks
 #   bin/deploy <env> push [--dry-run] [--allow-dirty]    build, then upload theme + mu-plugins
+#   bin/deploy <env> bootstrap --plan                    FIRST deploy: show what would be transferred
+#   bin/deploy <env> bootstrap --confirm-bootstrap=<PROJECT_SLUG> [--with-db] [--no-uploads]
+#                              [--no-plugins] [--dry-run]
+#                                                        FIRST deploy: theme + mu-plugins + plugins in
+#                                                        deploy-plugins.txt + uploads (+ database)
 #   bin/deploy <env> wp <args…>                          remote wp-cli (ssh transport only)
 #   bin/deploy <env> db-backup                           remote DB dump to .deploy-backups/ (ssh only)
 #
 #   <env> = staging | production
 #
-# Production additionally requires --confirm-production=<PROJECT_SLUG> and is NEVER run by an agent
+# bootstrap ALWAYS needs the user's confirmation: run --plan, show it, ask, then pass
+# --confirm-bootstrap=<PROJECT_SLUG>. Production additionally requires --confirm-production=<PROJECT_SLUG> and is NEVER run by an agent
 # unless the user explicitly asked for a production deploy in the current request.
 #
 # Authentication is ALWAYS by SSH key, for both transports — never a password. By default the keys
@@ -220,20 +226,40 @@ build_release() {
     ( cd "$THEME_DIR" && { [[ -d node_modules ]] || npm ci --no-audit --no-fund; } && npm run build )
 
     info "Assembling release in $BUILD_DIR/"
-    rm -rf "$BUILD_DIR"; mkdir -p "$BUILD_DIR/theme" "$BUILD_DIR/mu-plugins"
+    # Synced in place with --delete, never rm -rf'd: a directory deleted and recreated at once can
+    # look stale to a container (Docker Desktop file sharing on macOS) running LOCAL_COMPOSER_CMD.
+    # vendor/ is excluded, so rsync keeps it and `composer install` reconciles it with the lock file.
+    mkdir -p "$BUILD_DIR/theme" "$BUILD_DIR/mu-plugins"
     rsync -a --delete \
         --exclude node_modules --exclude vendor --exclude .git --exclude tests \
         --exclude '.env*' --exclude .DS_Store --exclude '*.log' \
         "$THEME_DIR/" "$BUILD_DIR/theme/"
     if [[ -f "$BUILD_DIR/theme/composer.json" ]]; then
-        composer install --no-dev --optimize-autoloader --no-interaction --no-progress \
-            --working-dir="$BUILD_DIR/theme" >/dev/null
+        # LOCAL_COMPOSER_CMD runs composer where it lives: "composer" on the host, or e.g.
+        # "docker exec -w <repo root in container> <php container> composer". The working dir is
+        # passed RELATIVE to the repository root, so it resolves the same on host and in container.
+        # Split on spaces only (the script's IFS is newline/tab); no quoting inside the value.
+        # Unset and no host composer: derive it from LOCAL_WP_CMD when that is a container command
+        # ending in "wp" (same container, same working dir) — "docker exec … php wp" → "… php composer".
+        if [[ -z "${LOCAL_COMPOSER_CMD:-}" ]] && ! command -v composer >/dev/null \
+            && [[ "${LOCAL_WP_CMD:-}" == *" wp" && "${LOCAL_WP_CMD:-}" != "wp" ]]; then
+            LOCAL_COMPOSER_CMD="${LOCAL_WP_CMD% wp} composer"
+            info "composer via LOCAL_WP_CMD's container: $LOCAL_COMPOSER_CMD"
+        fi
+        local -a composer_cmd
+        IFS=' ' read -r -a composer_cmd <<< "${LOCAL_COMPOSER_CMD:-composer}"
+        command -v "${composer_cmd[0]}" >/dev/null \
+            || die "'${composer_cmd[0]}' not found — install composer or set LOCAL_COMPOSER_CMD in .env"
+        "${composer_cmd[@]}" install --no-dev --optimize-autoloader --no-interaction --no-progress \
+            --working-dir="$BUILD_DIR/theme" >/dev/null \
+            || die "composer install failed in $BUILD_DIR/theme (LOCAL_COMPOSER_CMD: ${LOCAL_COMPOSER_CMD:-composer})"
+        [[ -f "$BUILD_DIR/theme/vendor/autoload.php" ]] || die "vendor/autoload.php missing after composer install"
     fi
     [[ -f "$BUILD_DIR/theme/public/build/manifest.json" ]] || die "Vite manifest missing after build"
     if [[ -d "$THEME_DIR/resources/js/blocks" ]]; then
         [[ -f "$BUILD_DIR/theme/public/blocks/index.asset.php" ]] || die "block bundle missing after build"
     fi
-    [[ -d "$MU_PLUGINS_DIR" ]] && rsync -a --exclude tests --exclude .DS_Store "$MU_PLUGINS_DIR/" "$BUILD_DIR/mu-plugins/"
+    [[ -d "$MU_PLUGINS_DIR" ]] && rsync -a --delete --exclude tests --exclude .DS_Store "$MU_PLUGINS_DIR/" "$BUILD_DIR/mu-plugins/"
     return 0
 }
 
@@ -305,6 +331,166 @@ push() {
     info "Done: $ENV_NAME ${dry:+(dry run) }— $(envvar URL)"
 }
 
+remote_dir_exists() {   # remote_dir_exists <absolute remote path>
+    if [[ "$TRANSPORT" == ssh ]]; then
+        remote_sh "test -d $(printf '%q' "$1")" 2>/dev/null
+    else
+        lftp_run "cls -d $(printf '%q' "$1")" >/dev/null 2>&1
+    fi
+}
+
+transfer() {   # transfer <local dir> <repo-relative remote dir> <delete:0|1> <dry:""|1>
+    local src="$1" rel="$2" del="$3" dry="$4" dst
+    dst="$(guard_path "$RROOT" "$rel")" || die "remote path fails validation: $rel"
+    [[ -d "$src" ]] || die "local directory not found: $src"
+    if [[ "$TRANSPORT" == ssh ]]; then
+        local ropts=(-az --itemize-changes --exclude .git --exclude .DS_Store -e "$(ssh_e)")
+        [[ -n "$dry" ]] && ropts+=(--dry-run)
+        [[ "$del" == 1 ]] && ropts+=(--delete)
+        rsync "${ropts[@]}" "$src/" "$RUSER@$HOST:$dst/"
+    else
+        local d="" x=""
+        [[ -n "$dry" ]] && d="--dry-run"
+        [[ "$del" == 1 ]] && x="--delete"
+        lftp_run "mirror --reverse $x --verbose --parallel=4 --exclude-glob .git/ --exclude-glob .DS_Store $d $(printf '%q' "$src") $(printf '%q' "$dst")"
+    fi
+}
+
+read_plugin_list() {   # prints one plugin slug per line from deploy-plugins.txt
+    [[ -f deploy-plugins.txt ]] || return 0
+    local line
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%%#*}"; line="${line//[[:space:]]/}"
+        [[ -z "$line" ]] && continue
+        case "$line" in *[!a-z0-9_-]*) die "deploy-plugins.txt: invalid plugin slug '$line'" ;; esac
+        printf '%s\n' "$line"
+    done < deploy-plugins.txt
+}
+
+local_wp() {   # local_wp <args…> — runs LOCAL_WP_CMD (e.g. "wp", "ddev wp") from the repo root
+    local IFS=' ' base
+    read -r -a base <<< "${LOCAL_WP_CMD:-wp}"
+    "${base[@]}" "$@"
+}
+
+bootstrap() {
+    local plan="" dry="" with_db="" no_uploads="" no_plugins="" confirm="" confirm_prod="" a
+    for a in "$@"; do
+        case "$a" in
+            --plan)                  plan=1 ;;
+            -n|--dry-run)            dry=1 ;;
+            --with-db)               with_db=1 ;;
+            --no-uploads)            no_uploads=1 ;;
+            --no-plugins)            no_plugins=1 ;;
+            --confirm-bootstrap=*)   confirm="${a#*=}" ;;
+            --confirm-production=*)  confirm_prod="${a#*=}" ;;
+            *) die "unknown option '$a'" ;;
+        esac
+    done
+
+    local plugins=() p theme_slug local_url remote_url uploads="wp-content/uploads"
+    if [[ -z "$no_plugins" ]]; then
+        while IFS= read -r p; do [[ -n "$p" ]] && plugins+=("$p"); done < <(read_plugin_list)
+        for p in "${plugins[@]+"${plugins[@]}"}"; do
+            [[ -d "wp-content/plugins/$p" ]] || die "plugin '$p' listed in deploy-plugins.txt is not in wp-content/plugins/"
+        done
+    fi
+    theme_slug="$(basename "$THEME_DIR")"
+    local_url="${LOCAL_URL:-}"; remote_url="$(envvar URL)"
+    is_placeholder "$remote_url" && die "${PREFIX}_URL is still a placeholder"
+    if [[ -n "$with_db" ]]; then
+        [[ "$TRANSPORT" == ssh ]] || die "--with-db needs the ssh transport (remote wp-cli); over sftp import the DB from the hosting panel"
+        is_placeholder "$local_url" && die "LOCAL_URL is still a placeholder — needed for the URL search-replace"
+    fi
+
+    # ---- the plan: always printed, and the only output of --plan ------------------------------
+    info "FIRST DEPLOY (bootstrap) → $ENV_NAME  ($remote_url, $TRANSPORT://$RUSER@$HOST$RROOT)"
+    printf '  %-12s %s\n' "theme"      "$THEME_DIR  (built: npm run build + composer --no-dev)  $(du -sh "$THEME_DIR" 2>/dev/null | cut -f1)"
+    printf '  %-12s %s\n' "mu-plugins" "$MU_PLUGINS_DIR  $(du -sh "$MU_PLUGINS_DIR" 2>/dev/null | cut -f1)"
+    if [[ -n "$no_plugins" ]]; then printf '  %-12s %s\n' "plugins" "skipped (--no-plugins)"
+    elif [[ ${#plugins[@]} -eq 0 ]]; then printf '  %-12s %s\n' "plugins" "none (deploy-plugins.txt empty or missing)"
+    else for p in "${plugins[@]}"; do printf '  %-12s %s\n' "plugin" "wp-content/plugins/$p  $(du -sh "wp-content/plugins/$p" | cut -f1)"; done; fi
+    if [[ -n "$no_uploads" ]]; then printf '  %-12s %s\n' "uploads" "skipped (--no-uploads)"
+    elif [[ -d "$uploads" ]]; then printf '  %-12s %s\n' "uploads" "$uploads  $(du -sh "$uploads" | cut -f1)  (added/updated, never deleted remotely)"
+    else printf '  %-12s %s\n' "uploads" "none locally"; fi
+    if [[ -n "$with_db" ]]; then
+        printf '  %-12s %s\n' "database" "local DB REPLACES the remote DB (remote backup first); $local_url → $remote_url"
+        printf '  %-12s %s\n' "" "remote users become the local ones; staging is set to discourage search engines"
+    else printf '  %-12s %s\n' "database" "not transferred (add --with-db)"; fi
+    if remote_dir_exists "$(guard_path "$RROOT" "$THEME_DIR")"; then
+        warn "the theme already exists on $ENV_NAME — this is not a first deploy; 'push' is usually what you want"
+    fi
+    if [[ -n "$plan" ]]; then
+        echo; echo "Plan only. Ask the user to confirm, then run with --confirm-bootstrap=$PROJECT_SLUG"
+        return 0
+    fi
+
+    # ---- gates --------------------------------------------------------------------------------
+    if [[ -z "$dry" ]]; then
+        [[ "$confirm" == "$PROJECT_SLUG" ]] \
+            || die "bootstrap requires the user's confirmation: show 'bootstrap --plan', then pass --confirm-bootstrap=$PROJECT_SLUG"
+    fi
+    local push_args=()
+    [[ -n "$dry" ]] && push_args+=(--dry-run)
+    [[ -n "$confirm_prod" ]] && push_args+=("--confirm-production=$confirm_prod")
+    if [[ "$ENV_NAME" == production && -z "$dry" ]]; then
+        [[ "$confirm_prod" == "$PROJECT_SLUG" ]] || die "production bootstrap also requires --confirm-production=$PROJECT_SLUG"
+    fi
+
+    # ---- 1. database backup before anything can overwrite it ----------------------------------
+    [[ -n "$with_db" && -z "$dry" && "$ENV_NAME" != production ]] && backup_remote   # production: push does it
+
+    # ---- 2. theme + mu-plugins (build included) -------------------------------------------------
+    push "${push_args[@]+"${push_args[@]}"}"
+
+    # ---- 3. plugins -----------------------------------------------------------------------------
+    for p in "${plugins[@]+"${plugins[@]}"}"; do
+        info "Plugin: $p"
+        transfer "wp-content/plugins/$p" "wp-content/plugins/$p" 1 "$dry"
+    done
+
+    # ---- 4. uploads -----------------------------------------------------------------------------
+    if [[ -z "$no_uploads" && -d "$uploads" ]]; then
+        info "Uploads"
+        transfer "$uploads" "$uploads" 0 "$dry"
+    fi
+
+    # ---- 5. database ----------------------------------------------------------------------------
+    if [[ -n "$with_db" && -z "$dry" ]]; then
+        local dump="$BUILD_DIR/db.sql" lprefix rprefix esc_l esc_r
+        lprefix="$(local_wp config get table_prefix 2>/dev/null | tail -1)"
+        rprefix="$(remote_wp config get table_prefix 2>/dev/null | tail -1)"
+        [[ -n "$lprefix" && "$lprefix" == "$rprefix" ]] \
+            || die "table prefix differs (local '$lprefix', remote '$rprefix') — align \$table_prefix in the remote wp-config.php first"
+        info "Exporting local database"
+        local_wp db export - > "$dump"
+        [[ -s "$dump" ]] || die "local database export is empty"
+        info "Importing into $ENV_NAME"
+        remote_wp db import - < "$dump"
+        info "Replacing $local_url → $remote_url"
+        remote_wp search-replace "$local_url" "$remote_url" --all-tables-with-prefix --skip-columns=guid --precise --report-changed-only
+        esc_l="${local_url//\//\\\/}"; esc_r="${remote_url//\//\\\/}"      # JSON-escaped form used in block attributes
+        remote_wp search-replace "$esc_l" "$esc_r" --all-tables-with-prefix --skip-columns=guid --precise --report-changed-only
+        rm -f "$dump"
+    fi
+
+    # ---- 6. activate and refresh (ssh) ----------------------------------------------------------
+    if [[ -z "$dry" ]]; then
+        if [[ "$TRANSPORT" == ssh ]]; then
+            remote_wp theme activate "$theme_slug"
+            [[ ${#plugins[@]} -gt 0 ]] && remote_wp plugin activate "${plugins[@]}"
+            [[ "$ENV_NAME" == staging ]] && remote_wp option update blog_public 0
+            remote_wp rewrite flush || true
+            remote_wp acorn optimize || warn "wp acorn optimize failed — run it manually"
+        else
+            warn "sftp transport: activate the theme '$theme_slug' and the plugins from wp-admin; on staging tick 'Discourage search engines'"
+        fi
+    fi
+
+    log "bootstrap${dry:+ dry-run} plugins=${#plugins[@]} uploads=$([[ -z "$no_uploads" ]] && echo yes || echo no) db=$([[ -n "$with_db" ]] && echo yes || echo no)"
+    info "Bootstrap done: $ENV_NAME ${dry:+(dry run) }— $remote_url"
+}
+
 doctor() {
     info "$ENV_NAME: $TRANSPORT://$RUSER@$HOST:$PORT$RROOT (key: ${KEY:-default keys on this computer})"
     ssh_opts
@@ -343,6 +529,7 @@ cmd="${1:-}"; shift || true
 case "$cmd" in
     doctor)    doctor ;;
     push)      push "$@" ;;
+    bootstrap) bootstrap "$@" ;;
     wp)        [[ $# -ge 1 ]] || die "usage: bin/deploy <env> wp <args…>"
                if [[ "$ENV_NAME" == production ]]; then
                    case "${1:-}" in
@@ -352,5 +539,5 @@ case "$cmd" in
                fi
                remote_wp "$@"; log "wp $1" ;;
     db-backup) backup_remote ;;
-    *) die "unknown command '$cmd' (doctor | push | wp | db-backup)" ;;
+    *) die "unknown command '$cmd' (doctor | push | bootstrap | wp | db-backup)" ;;
 esac
