@@ -1,12 +1,59 @@
 # Project kickoff: git, environments, deploy, first admin
 
 Run this **before the first line of theme code** on a new project, and as a gap check on an existing
-one (skip what already exists, never overwrite it). The order matters: git first, so every later file
-lands in a tracked tree; `.env` second, because the deploy scripts read it; the admin user last,
+one (skip what already exists, never overwrite it). The order matters: the theme name first, because
+the folder, the block namespace and every prefix derive from it; git next, so every later file lands
+in a tracked tree; `.env` second, because the deploy scripts read it; the admin user last,
 because it needs a working database.
 
 Everything here is gathered by **asking the user** — use the question tool when available, plain
 questions otherwise. Never invent a remote URL, a host, a username or an email.
+
+## 0. Theme name — the first question on a new theme
+
+On a project that develops a **new theme**, the first thing to ask — before git, before any file — is
+the **WordPress theme name**. Never invent it, never keep Sage's default `sage` / "Sage Starter Theme",
+never derive it silently from the folder or the domain. (On an existing theme, read it from
+`style.css` instead and don't rename anything unless asked — a rename is a migration.)
+
+Ask for the display name, then propose the slug derived from it and have the user confirm it:
+
+| Input | Example | Rule |
+|---|---|---|
+| Theme name (display) | `Acme Studio` | free text, shown in *Appearance → Themes* |
+| Theme slug | `acme-studio` | lowercase `a-z0-9-`, starts with a letter, no `wp`/`wordpress`/`theme` noise; **check it does not exist on wordpress.org** |
+
+The slug is the theme's identity everywhere, so it is fixed now:
+
+- theme folder `wp-content/themes/<slug>/` and `THEME_DIR` / `PROJECT_SLUG` in `.env`;
+- `style.css` header;
+- the block namespace and inserter category — `mytheme/…` in every example of these references stands
+  for `<slug>/…`;
+- the prefix of PHP functions, handles, option and meta keys (`<slug_with_underscores>_…`);
+- the mu-plugin's name and text domain.
+
+The **theme's text domain stays `sage`** unless the user asks otherwise: it is Sage's convention, the
+translation pipeline and the examples here assume it, and a custom theme is never loaded from
+wordpress.org's translation service anyway.
+
+`style.css` — replace Sage's header entirely:
+
+```css
+/*
+Theme Name:   Acme Studio
+Theme URI:    https://www.example.com
+Description:  Custom theme for Acme Studio, built on Sage.
+Version:      1.0.0
+Author:       <ask, or leave the agency name the user gives>
+Text Domain:  sage
+Requires PHP: 8.2
+Update URI:   false
+*/
+```
+
+`Update URI: false` is not optional: without it, WordPress offers "updates" for any custom theme whose
+slug happens to match a theme on wordpress.org — one click and the site is overwritten by a stranger's
+theme. Also set `composer.json` `"name"` and `package.json` `"name"` to the slug.
 
 ## 1. Git — configured at once, committed only on request
 
@@ -86,7 +133,7 @@ Then build `.env`: ask the user, in one round, for what they already know —
 
 | Key group | Ask |
 |---|---|
-| `PROJECT_SLUG`, `THEME_DIR` | short project slug; theme folder name |
+| `PROJECT_SLUG`, `THEME_DIR` | already known from step 0: the theme slug, `wp-content/themes/<slug>` |
 | `LOCAL_*` | local URL, how `wp` is invoked locally (`wp`, `ddev wp`, `docker exec …`), DB name/user/host |
 | `STAGING_*`, `PRODUCTION_*` | URL; transport (`ssh` preferred, `sftp` if the host has no shell); host (or `~/.ssh/config` alias), port, user; absolute WordPress root on the server. **Never a password**: access is by the SSH keys already on the computer (`SSH_KEY=default`), or a specific key path if the user names one |
 
@@ -166,6 +213,8 @@ already contain it, save it as `resources/images/logo.svg`, and wire the login s
 
 ## Checklist
 
+- [ ] New theme: name asked and slug confirmed by the user; folder, `style.css` header (with
+      `Update URI: false`), block namespace, prefixes, `composer.json`/`package.json` names all use it.
 - [ ] `origin` set and shown back to the user; default branch named; no commit made without a request.
 - [ ] `.gitignore` copied from `assets/gitignore`; `.env` ignored and untracked, `.env.example` not
       ignored and staged (`git add .env.example`) — the three checks above pass.

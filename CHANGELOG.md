@@ -2,6 +2,15 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 2.4.0 — 2026-09-27
+
+- **Theme name asked first** on every new theme (kickoff step 0): display name → slug confirmed by the
+  user → folder, `THEME_DIR`/`PROJECT_SLUG`, `style.css` header, block namespace, prefixes,
+  `composer.json`/`package.json` names. Existing themes are read, never renamed unless asked.
+- `style.css` header template with `Update URI: false`, so a slug that matches a wordpress.org theme can
+  never be "updated" over the custom one.
+- Text domain stays `sage` by default.
+
 ## 2.3.0 — 2026-09-27
 
 - **SSH key authentication only, with the keys already on the computer**: `<ENV>_SSH_KEY=default`

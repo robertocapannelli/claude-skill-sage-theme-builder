@@ -273,6 +273,8 @@
       "expected_output": "Claude avvia il kickoff: chiede URL del repository remoto e branch, i dati di local/staging/produzione e il logo aziendale, username ed email dell'admin; configura git e il remote senza committare; crea .env (gitignored, chmod 600) con i segreti come CHANGE_ME e .env.example; copia bin/deploy, .claude/settings.json e l'hook dagli assets.",
       "files": [],
       "assertions": [
+        "Come prima domanda chiede il nome del tema WordPress e propone uno slug da confermare",
+        "Usa lo slug confermato per cartella del tema, THEME_DIR, namespace dei blocchi e header di style.css con Update URI: false",
         "Chiede l'URL del repository remoto invece di inventarlo",
         "Esegue git init e git remote add origin ma NON esegue git commit né git push",
         "Crea .env con dati per local, staging e produzione e verifica che sia ignorato da git",
