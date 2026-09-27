@@ -2,6 +2,17 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 2.3.0 — 2026-09-27
+
+- **SSH key authentication only, with the keys already on the computer**: `<ENV>_SSH_KEY=default`
+  uses ssh-agent / Keychain, `~/.ssh/config` and `~/.ssh/id_*`; a path pins one key. `<ENV>_HOST` may
+  be a `~/.ssh/config` alias.
+- Password and keyboard-interactive auth disabled on every connection (ssh, rsync, lftp): a missing
+  key fails fast instead of prompting.
+- SFTP password support removed: `*_SFTP_PASSWORD` keys dropped from `.env.example`; sftp uses the
+  same keys as ssh.
+- `bin/deploy <env> doctor` tests key authentication first and says how to fix it.
+
 ## 2.2.1 — 2026-09-27
 
 - `.env` always gitignored and never tracked, `.env.example` always tracked: new `assets/gitignore`

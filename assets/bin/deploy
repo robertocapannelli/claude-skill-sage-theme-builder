@@ -14,6 +14,11 @@
 # Production additionally requires --confirm-production=<PROJECT_SLUG> and is NEVER run by an agent
 # unless the user explicitly asked for a production deploy in the current request.
 #
+# Authentication is ALWAYS by SSH key, for both transports — never a password. By default the keys
+# already on this computer are used (ssh-agent, ~/.ssh/config, ~/.ssh/id_*); <ENV>_SSH_KEY may point
+# to one specific private key instead. Password and keyboard-interactive auth are disabled, so a
+# missing key fails fast instead of prompting.
+#
 # Every push runs the build first: build output is gitignored, so the working copy is never trusted
 # to contain it. Config is read from .env (chmod 600, gitignored) — see .env.example.
 #
@@ -125,10 +130,9 @@ check_env() {
             val="${env}_${key}"; val="${!val:-}"
             if is_placeholder "$val"; then printf '  ✗ %s_%s\n' "$env" "$key"; missing=1; fi
         done
-        val="${env}_TRANSPORT"; val="${!val:-ssh}"
-        if [[ "$val" == ssh ]]; then
-            val="${env}_SSH_KEY"; val="${!val:-}"
-            if is_placeholder "$val" || [[ ! -f "$val" ]]; then printf '  ✗ %s_SSH_KEY (placeholder or file not found)\n' "$env"; missing=1; fi
+        val="${env}_SSH_KEY"; val="${!val:-default}"
+        if [[ "$val" != default ]] && { is_placeholder "$val" || [[ ! -f "$val" ]]; }; then
+            printf '  ✗ %s_SSH_KEY (not "default" and no key file at that path)\n' "$env"; missing=1
         fi
     done
     for key in PROJECT_SLUG THEME_DIR; do
@@ -153,18 +157,19 @@ select_env() {
         is_placeholder "$(envvar "$k")" && die "${PREFIX}_$k in .env is still a placeholder — set the real value (bin/deploy check-env)"
     done
     [[ -n "$HOST" && -n "$RUSER" && -n "$RROOT" ]] || die "${PREFIX}_HOST/_USER/_ROOT must be set in .env"
-    case "$HOST"  in *[!A-Za-z0-9.-]*) die "${PREFIX}_HOST contains invalid characters" ;; esac
+    case "$HOST"  in *[!A-Za-z0-9._-]*) die "${PREFIX}_HOST contains invalid characters" ;; esac   # a ~/.ssh/config alias is fine
     case "$RUSER" in *[!A-Za-z0-9._-]*) die "${PREFIX}_USER contains invalid characters" ;; esac
     case "$PORT"  in *[!0-9]*) die "${PREFIX}_PORT must be numeric" ;; esac
     RROOT="$(guard_path "$RROOT" .)" || die "${PREFIX}_ROOT is not a valid absolute path"
+    # SSH key: "default" (or empty) = the keys already on this computer; otherwise a key file path.
+    case "$KEY" in ""|default) KEY="" ;; esac
+    if [[ -n "$KEY" ]]; then
+        is_placeholder "$KEY" && die "${PREFIX}_SSH_KEY is still a placeholder — use \"default\" or a real key path"
+        [[ -f "$KEY" ]] || die "${PREFIX}_SSH_KEY: no key file at $KEY"
+    fi
     case "$TRANSPORT" in
-        ssh)  [[ -n "$KEY" && -f "$KEY" ]] || die "ssh transport needs ${PREFIX}_SSH_KEY pointing to a key file" ;;
-        sftp) command -v lftp >/dev/null || die "sftp transport needs lftp (brew install lftp)"
-              if is_placeholder "$KEY" || [[ ! -f "$KEY" ]]; then KEY=""; fi
-              if [[ -z "$KEY" ]]; then
-                  local pw; pw="$(envvar SFTP_PASSWORD)"
-                  [[ -n "$pw" && "$pw" != CHANGE_ME ]] || die "set ${PREFIX}_SFTP_PASSWORD or ${PREFIX}_SSH_KEY"
-              fi ;;
+        ssh)  ;;
+        sftp) command -v lftp >/dev/null || die "sftp transport needs lftp (brew install lftp)" ;;
         *) die "${PREFIX}_TRANSPORT must be ssh or sftp" ;;
     esac
 }
@@ -176,7 +181,14 @@ log() {
 }
 
 SSH_OPTS=()
-ssh_opts() { SSH_OPTS=(-p "$PORT" -i "$KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15); }
+# Key-only authentication: never prompt for a password, fail fast if no key is accepted.
+ssh_auth_opts() {
+    SSH_OPTS=(-o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no
+              -o PreferredAuthentications=publickey -o ConnectTimeout=15)
+    if [[ -n "$KEY" ]]; then SSH_OPTS+=(-i "$KEY" -o IdentitiesOnly=yes); fi
+    return 0
+}
+ssh_opts() { ssh_auth_opts; SSH_OPTS=(-p "$PORT" "${SSH_OPTS[@]}"); }
 ssh_e()    { local IFS=' '; ssh_opts; printf 'ssh %s' "${SSH_OPTS[*]}"; }   # for rsync -e (IFS is \n\t globally)
 
 remote_sh() {   # remote_sh <already-quoted command string>
@@ -191,15 +203,14 @@ remote_wp() {
     remote_sh "cd $(printf '%q' "$RROOT") && wp --path=$(printf '%q' "$RROOT") $q"
 }
 
-lftp_run() {    # lftp_run <lftp script>
-    local connect=""
-    if [[ -n "$KEY" ]]; then
-        connect="set sftp:connect-program \"ssh -a -x -i $(printf '%q' "$KEY") -o IdentitiesOnly=yes\";"
-        lftp -u "$RUSER," -p "$PORT" -e "set sftp:auto-confirm yes; set net:max-retries 2; $connect $1; bye" "sftp://$HOST"
-    else
-        LFTP_PASSWORD="$(envvar SFTP_PASSWORD)" \
-        lftp --env-password -u "$RUSER" -p "$PORT" -e "set sftp:auto-confirm yes; set net:max-retries 2; $1; bye" "sftp://$HOST"
-    fi
+lftp_run() {    # lftp_run <lftp script> — sftp over ssh, same key-only authentication as above
+    local o connect="ssh -a -x"
+    ssh_auth_opts
+    for o in "${SSH_OPTS[@]}"; do connect+=" $(printf '%q' "$o")"; done
+    # "user," = empty password: lftp never asks for one; lftp adds -p/-l to the connect program itself.
+    lftp -u "$RUSER," -p "$PORT" \
+         -e "set sftp:auto-confirm yes; set net:max-retries 2; set sftp:connect-program \"$connect\"; $1; bye" \
+         "sftp://$HOST"
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -295,13 +306,22 @@ push() {
 }
 
 doctor() {
-    info "$ENV_NAME: $TRANSPORT://$RUSER@$HOST:$PORT$RROOT"
+    info "$ENV_NAME: $TRANSPORT://$RUSER@$HOST:$PORT$RROOT (key: ${KEY:-default keys on this computer})"
+    ssh_opts
+    if [[ "$TRANSPORT" == sftp ]]; then
+        : # sftp-only hosts often refuse a shell command: the lftp listing below tests the key instead
+    elif ssh "${SSH_OPTS[@]}" "$RUSER@$HOST" true 2>/dev/null; then
+        echo "  ssh key authentication: ok"
+    else
+        die "ssh key authentication failed — load the key (ssh-add --apple-use-keychain ~/.ssh/<key>), check ~/.ssh/config, or set ${PREFIX}_SSH_KEY; the server must have the public key in ~/.ssh/authorized_keys"
+    fi
     if [[ "$TRANSPORT" == ssh ]]; then
         remote_sh "test -f $(printf '%q' "$RROOT/wp-config.php")" && echo "  wp-config.php: found" || die "wp-config.php not found under ROOT"
         remote_wp core version >/dev/null && echo "  wp-cli: ok" || die "wp-cli not available remotely"
         remote_wp db check >/dev/null && echo "  database: ok" || die "database check failed"
     else
-        lftp_run "cls -1 $(printf '%q' "$RROOT/wp-config.php")" >/dev/null && echo "  wp-config.php: found" || die "wp-config.php not found under ROOT"
+        lftp_run "cls -1 $(printf '%q' "$RROOT/wp-config.php")" >/dev/null && echo "  sftp key authentication + wp-config.php: ok" \
+            || die "sftp failed — key not accepted (ssh-add, ~/.ssh/config, ${PREFIX}_SSH_KEY) or wp-config.php not under ROOT"
         echo "  wp-cli / database: not checkable over sftp"
     fi
 }
