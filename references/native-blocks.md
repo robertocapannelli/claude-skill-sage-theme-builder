@@ -264,6 +264,52 @@ Rules behind that shape:
 entry, so this is the one manual list in the system — and the JS parity test asserts it matches the
 folders on disk.
 
+## Everything visible is editable — no exceptions
+
+**Every piece of content a visitor can see on the front end must be editable from the block's
+controls.** If `render.php` prints it, an editor can change it — or deliberately empty it — without a
+developer. A hard-coded headline, a fixed image or a CTA label typed into the template is a bug, not a
+shortcut: the first copy change becomes a deploy.
+
+Map every visible element to an attribute and a control:
+
+| Visible element | Attribute(s) | Control |
+|---|---|---|
+| Heading, eyebrow, label, button text | `string` | `TextControl` |
+| Paragraph / multi-line text | `string` | `TextareaControl` (plain) or `RichText` in the panel when bold/links/lists are wanted — then `wp_kses_post()` on output |
+| Heading level, where the block can sit in different outlines | `string` (`h2`…`h4`) | `SelectControl` |
+| Image | `imageId`, `imageUrl`, `imageAlt` (+ `focalPoint` if cropped/cover) | `MediaUploadCheck` › `MediaUpload` with **Replace** and **Remove**, `TextControl` for alt (pre-filled from the library, overridable), `FocalPointPicker` |
+| Background / decorative image | same, `imageAlt` empty by design | as above, labelled "decorative" |
+| Video / embed | `videoUrl` or `videoId`, `posterId` | `MediaUpload` (`allowedTypes: ['video']`) or `TextControl` + validation |
+| Link / button | `linkUrl`, `linkLabel`, `linkNewTab` | `__experimentalLinkControl` (or `TextControl` for the URL) + `TextControl` + `ToggleControl` |
+| Icon | `icon` (key of a fixed set) | `SelectControl` / icon picker over the theme's set — never free SVG |
+| Repeated items (cards, stats, FAQs, logos) | `array` of objects | the repeater pattern above: add, remove, ↑/↓, every field of the item editable |
+| Optional element (eyebrow, secondary CTA, badge) | its content attribute | empty = **not rendered** (no empty tag, no stray spacing); a `ToggleControl` only when it is on/off without content |
+| Colour/variant that changes what is visible | `string` from a fixed list | `SelectControl` or block `styles` — tokens only, no free hex |
+
+Rules:
+
+- **No visible literal in `render.php`.** The only strings allowed in the template are
+  screen-reader-only labels and structural ARIA text, and those go through `__()` (`i18n.md`).
+  Defaults in `block.json` carry placeholder copy, so the block looks right on insert — and are
+  load-bearing (`content-migrations.md`).
+- **Images always come with alt control** and the attachment id (for `srcset` via
+  `wp_get_attachment_image()`), never a URL alone.
+- **Every attribute in `block.json` has a control in `edit()`**, and every control writes an attribute
+  that `render.php` reads. An attribute with no control is invisible dead weight; a control nobody
+  renders is a lie to the editor.
+- Content coming from a post (title, excerpt, featured image) is edited where it lives — the post —
+  and the block offers the override described in *Blocks that inherit from a post* below.
+- Group controls in panels by what the editor sees, top to bottom (Content, Image, Button, Items,
+  Appearance), and give every control a label in the site's editor language via `__()`.
+
+Enforce it with the parity test (`testing.md`): for each block, every key under `attributes` in
+`block.json` must appear in the block's `edit()` source. It costs ten lines and catches the most common
+regression — a field added to the template and the schema, but not to the editor.
+
+Before closing a block, walk the rendered front end element by element and name the control that
+changes each one. If you cannot name it, the block is not done.
+
 ## Naming: structure, not content
 
 Name a block after **the shape of the section**, never after the page content it happens to show.
@@ -391,6 +437,8 @@ dynamic data and server-rendered schema all depend on it. Document the choice pe
   attribute set — see the inheritance section above.
 - **A block renders nothing after a rename.** There is no alias: old `post_content` still says the old
   name. Migrate the database (`content-migrations.md`).
+- **A text, image or link on the front end has no control in the editor.** Hard-coded in `render.php`
+  or an attribute without a control — see *Everything visible is editable*.
 - **The block's own classes are missing on the wrapper.** You wrote `class="…"` instead of merging
   through `get_block_wrapper_attributes()`.
 - **A Tailwind class typed by the editor into an attribute does nothing.** Tailwind never scans block

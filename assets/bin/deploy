@@ -1,0 +1,295 @@
+#!/usr/bin/env bash
+#
+# bin/deploy — the only route from this working copy to staging or production.
+#
+#   bin/deploy selftest                                  offline test of the path validator
+#   bin/deploy <env> doctor                              read-only connectivity checks
+#   bin/deploy <env> push [--dry-run] [--allow-dirty]    build, then upload theme + mu-plugins
+#   bin/deploy <env> wp <args…>                          remote wp-cli (ssh transport only)
+#   bin/deploy <env> db-backup                           remote DB dump to .deploy-backups/ (ssh only)
+#
+#   <env> = staging | production
+#
+# Production additionally requires --confirm-production=<PROJECT_SLUG> and is NEVER run by an agent
+# unless the user explicitly asked for a production deploy in the current request.
+#
+# Every push runs the build first: build output is gitignored, so the working copy is never trusted
+# to contain it. Config is read from .env (chmod 600, gitignored) — see .env.example.
+#
+# Compatible with the bash 3.2 that ships with macOS.
+
+set -euo pipefail
+IFS=$'\n\t'
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+BUILD_DIR=".deploy-build"
+LOG_DIR=".deploy-logs"
+BACKUP_DIR=".deploy-backups"
+
+die()  { printf 'deploy: %s\n' "$*" >&2; exit 1; }
+info() { printf '\033[1m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[33mwarning:\033[0m %s\n' "$*" >&2; }
+
+# ---------------------------------------------------------------------------------------------
+# guard_path <root> <relative-or-absolute path> — pure: no network, no filesystem.
+# Only [A-Za-z0-9._/-]; no "." or ".." segment; result must sit under <root>.
+guard_path() {
+    local root="$1" path="$2" abs
+    case "$root" in /*) ;; *) return 1 ;; esac
+    case "$root" in *[!A-Za-z0-9._/-]*) return 1 ;; esac
+    root="${root%/}"
+    [[ -n "$root" ]] || return 1                     # "/" alone is never a valid root
+    case "/${root#/}/" in */../*|*/./*) return 1 ;; esac
+    [[ -n "$path" ]] || return 1
+    case "$path" in *[!A-Za-z0-9._/-]*) return 1 ;; esac
+    case "$path" in .) abs="$root" ;; /*) abs="$path" ;; *) abs="$root/$path" ;; esac
+    abs="${abs%/}"
+    case "/${abs#/}/" in */../*|*/./*) return 1 ;; esac
+    [[ "$abs" == "$root" || "$abs" == "$root/"* ]] || return 1
+    printf '%s\n' "$abs"
+}
+
+selftest() {
+    local fail=0 r
+    ok()  { if ! guard_path "$1" "$2" >/dev/null; then printf 'FAIL (rejected) %s | %s\n' "$1" "$2"; fail=1; fi; }
+    bad() { if guard_path "$1" "$2" >/dev/null; then printf 'FAIL (accepted) %s | %s\n' "$1" "$2"; fail=1; fi; }
+    r=/home/u/staging
+    ok  "$r" wp-content/themes/acme
+    ok  "$r" wp-content/mu-plugins/
+    ok  "$r" "$r/wp-content"
+    ok  "$r" .
+    bad "$r" wp-content/../../prod
+    bad "$r" ../staging2
+    bad "$r" /home/u/staging2-evil
+    bad "$r" /etc
+    bad "$r" 'a$(x)'
+    bad "$r" 'a`x`'
+    bad "$r" 'a b'
+    bad "$r" 'a;rm'
+    bad "$r" ./wp-content
+    bad "$r" ''
+    bad /  wp-content
+    bad relative/root wp-content
+    bad /home/u/../root wp-content
+    bad '/home/u/sta ging' wp-content
+    [[ $fail -eq 0 ]] && echo "selftest: all cases pass" || die "selftest failed"
+}
+
+# ---------------------------------------------------------------------------------------------
+# .env loader — parsed, never sourced (sourcing would execute whatever the file contains).
+load_env() {
+    [[ -f .env ]] || die ".env not found at repository root — copy .env.example and fill it in"
+    local perms
+    perms="$(stat -c %a .env 2>/dev/null || stat -f %Lp .env)"
+    [[ "$perms" == 600 ]] || die ".env must be chmod 600 (currently $perms)"
+    git check-ignore -q .env 2>/dev/null || die ".env is not gitignored — fix .gitignore first"
+    local line key val
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" =~ ^[[:space:]]*(#.*)?$ ]] && continue
+        [[ "$line" =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]] || die "malformed line in .env (key: ${line%%=*})"
+        key="${BASH_REMATCH[1]}"; val="${BASH_REMATCH[2]}"
+        if   [[ "$val" =~ ^\"([^\"]*)\" ]]; then val="${BASH_REMATCH[1]}"
+        elif [[ "$val" =~ ^\'([^\']*)\' ]]; then val="${BASH_REMATCH[1]}"
+        else
+            val="${val%%[[:space:]]#*}"
+            val="${val%"${val##*[![:space:]]}"}"
+        fi
+        case "$val" in "~/"*) val="$HOME/${val#\~/}" ;; esac
+        printf -v "$key" '%s' "$val"
+    done < .env
+    : "${PROJECT_SLUG:?PROJECT_SLUG missing in .env}"
+    : "${THEME_DIR:?THEME_DIR missing in .env}"
+    MU_PLUGINS_DIR="${MU_PLUGINS_DIR:-wp-content/mu-plugins}"
+}
+
+envvar() { local n="${PREFIX}_$1"; printf '%s' "${!n:-}"; }
+
+select_env() {
+    case "$1" in
+        staging)    PREFIX=STAGING ;;
+        production) PREFIX=PRODUCTION ;;
+        *) die "unknown environment '$1' (staging|production)" ;;
+    esac
+    ENV_NAME="$1"
+    TRANSPORT="$(envvar TRANSPORT)"; HOST="$(envvar HOST)"; PORT="$(envvar PORT)"
+    RUSER="$(envvar USER)"; KEY="$(envvar SSH_KEY)"; RROOT="$(envvar ROOT)"
+    PORT="${PORT:-22}"; TRANSPORT="${TRANSPORT:-ssh}"
+    [[ -n "$HOST" && -n "$RUSER" && -n "$RROOT" ]] || die "${PREFIX}_HOST/_USER/_ROOT must be set in .env"
+    case "$HOST"  in *[!A-Za-z0-9.-]*) die "${PREFIX}_HOST contains invalid characters" ;; esac
+    case "$RUSER" in *[!A-Za-z0-9._-]*) die "${PREFIX}_USER contains invalid characters" ;; esac
+    case "$PORT"  in *[!0-9]*) die "${PREFIX}_PORT must be numeric" ;; esac
+    RROOT="$(guard_path "$RROOT" .)" || die "${PREFIX}_ROOT is not a valid absolute path"
+    case "$TRANSPORT" in
+        ssh)  [[ -n "$KEY" && -f "$KEY" ]] || die "ssh transport needs ${PREFIX}_SSH_KEY pointing to a key file" ;;
+        sftp) command -v lftp >/dev/null || die "sftp transport needs lftp (brew install lftp)"
+              if [[ -z "$KEY" ]]; then
+                  local pw; pw="$(envvar SFTP_PASSWORD)"
+                  [[ -n "$pw" && "$pw" != CHANGE_ME ]] || die "set ${PREFIX}_SFTP_PASSWORD or ${PREFIX}_SSH_KEY"
+              fi ;;
+        *) die "${PREFIX}_TRANSPORT must be ssh or sftp" ;;
+    esac
+}
+
+log() {
+    mkdir -p "$LOG_DIR"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ENV_NAME" \
+        "$(git rev-parse --short HEAD 2>/dev/null || echo no-git)" "${USER:-?}" "$*" >> "$LOG_DIR/deploy.log"
+}
+
+SSH_OPTS=()
+ssh_opts() { SSH_OPTS=(-p "$PORT" -i "$KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15); }
+ssh_e()    { local IFS=' '; ssh_opts; printf 'ssh %s' "${SSH_OPTS[*]}"; }   # for rsync -e (IFS is \n\t globally)
+
+remote_sh() {   # remote_sh <already-quoted command string>
+    [[ "$TRANSPORT" == ssh ]] || die "this command needs the ssh transport"
+    ssh_opts
+    ssh "${SSH_OPTS[@]}" "$RUSER@$HOST" "$1"
+}
+
+remote_wp() {
+    local q="" a
+    for a in "$@"; do q+="$(printf '%q' "$a") "; done
+    remote_sh "cd $(printf '%q' "$RROOT") && wp --path=$(printf '%q' "$RROOT") $q"
+}
+
+lftp_run() {    # lftp_run <lftp script>
+    local connect=""
+    if [[ -n "$KEY" ]]; then
+        connect="set sftp:connect-program \"ssh -a -x -i $(printf '%q' "$KEY") -o IdentitiesOnly=yes\";"
+        lftp -u "$RUSER," -p "$PORT" -e "set sftp:auto-confirm yes; set net:max-retries 2; $connect $1; bye" "sftp://$HOST"
+    else
+        LFTP_PASSWORD="$(envvar SFTP_PASSWORD)" \
+        lftp --env-password -u "$RUSER" -p "$PORT" -e "set sftp:auto-confirm yes; set net:max-retries 2; $1; bye" "sftp://$HOST"
+    fi
+}
+
+# ---------------------------------------------------------------------------------------------
+build_release() {
+    info "Building theme assets ($THEME_DIR)"
+    [[ -f "$THEME_DIR/package.json" ]] || die "$THEME_DIR/package.json not found — check THEME_DIR"
+    ( cd "$THEME_DIR" && { [[ -d node_modules ]] || npm ci --no-audit --no-fund; } && npm run build )
+
+    info "Assembling release in $BUILD_DIR/"
+    rm -rf "$BUILD_DIR"; mkdir -p "$BUILD_DIR/theme" "$BUILD_DIR/mu-plugins"
+    rsync -a --delete \
+        --exclude node_modules --exclude vendor --exclude .git --exclude tests \
+        --exclude '.env*' --exclude .DS_Store --exclude '*.log' \
+        "$THEME_DIR/" "$BUILD_DIR/theme/"
+    if [[ -f "$BUILD_DIR/theme/composer.json" ]]; then
+        composer install --no-dev --optimize-autoloader --no-interaction --no-progress \
+            --working-dir="$BUILD_DIR/theme" >/dev/null
+    fi
+    [[ -f "$BUILD_DIR/theme/public/build/manifest.json" ]] || die "Vite manifest missing after build"
+    if [[ -d "$THEME_DIR/resources/js/blocks" ]]; then
+        [[ -f "$BUILD_DIR/theme/public/blocks/index.asset.php" ]] || die "block bundle missing after build"
+    fi
+    [[ -d "$MU_PLUGINS_DIR" ]] && rsync -a --exclude tests --exclude .DS_Store "$MU_PLUGINS_DIR/" "$BUILD_DIR/mu-plugins/"
+    return 0
+}
+
+backup_remote() {
+    local ts dir; ts="$(date +%Y%m%d-%H%M%S)"; dir="$BACKUP_DIR/$PROJECT_SLUG-$ENV_NAME-$ts"
+    mkdir -p "$dir"
+    local rtheme; rtheme="$(guard_path "$RROOT" "$THEME_DIR")" || die "THEME_DIR fails path validation"
+    info "Backing up remote theme to $dir/theme"
+    if [[ "$TRANSPORT" == ssh ]]; then
+        ssh_opts
+        rsync -az -e "$(ssh_e)" "$RUSER@$HOST:$rtheme/" "$dir/theme/" || warn "no remote theme yet (first deploy?)"
+        info "Backing up remote database"
+        remote_wp db export - > "$dir/db.sql"
+        [[ -s "$dir/db.sql" ]] || die "remote database backup is empty ($dir/db.sql): stopping"
+    else
+        lftp_run "mirror --parallel=4 $(printf '%q' "$rtheme") $(printf '%q' "$dir/theme")" || warn "no remote theme yet (first deploy?)"
+        warn "sftp transport: no database backup possible — take one from the hosting panel if the release touches data"
+    fi
+}
+
+push() {
+    local dry="" allow_dirty="" confirm="" a
+    for a in "$@"; do
+        case "$a" in
+            -n|--dry-run)            dry=1 ;;
+            --allow-dirty)           allow_dirty=1 ;;
+            --confirm-production=*)  confirm="${a#*=}" ;;
+            *) die "unknown option '$a'" ;;
+        esac
+    done
+
+    if [[ "$ENV_NAME" == production && -z "$dry" ]]; then
+        [[ "$confirm" == "$PROJECT_SLUG" ]] \
+            || die "production push requires --confirm-production=$PROJECT_SLUG (explicit request only)"
+        if [[ -z "$allow_dirty" && -n "$(git status --porcelain 2>/dev/null)" ]]; then
+            die "working tree has uncommitted changes — commit them first or pass --allow-dirty"
+        fi
+    fi
+
+    build_release
+
+    local rtheme rmu
+    rtheme="$(guard_path "$RROOT" "$THEME_DIR")"      || die "THEME_DIR fails path validation"
+    rmu="$(guard_path "$RROOT" "$MU_PLUGINS_DIR")"    || die "MU_PLUGINS_DIR fails path validation"
+
+    [[ "$ENV_NAME" == production && -z "$dry" ]] && backup_remote
+
+    info "Uploading to $ENV_NAME via $TRANSPORT${dry:+ (dry run)}"
+    if [[ "$TRANSPORT" == ssh ]]; then
+        ssh_opts
+        local ropts=(-az --itemize-changes -e "$(ssh_e)")
+        [[ -n "$dry" ]] && ropts+=(--dry-run)
+        rsync "${ropts[@]}" --delete "$BUILD_DIR/theme/" "$RUSER@$HOST:$rtheme/"
+        # mu-plugins: no --delete — hosts often install their own there.
+        [[ -n "$(ls -A "$BUILD_DIR/mu-plugins")" ]] && rsync "${ropts[@]}" "$BUILD_DIR/mu-plugins/" "$RUSER@$HOST:$rmu/"
+        if [[ -z "$dry" ]]; then
+            info "Refreshing Acorn caches"
+            remote_wp acorn optimize || warn "wp acorn optimize failed — run it manually"
+        fi
+    else
+        local d=""; [[ -n "$dry" ]] && d="--dry-run"
+        lftp_run "mirror --reverse --delete --verbose --parallel=4 $d $(printf '%q' "$BUILD_DIR/theme") $(printf '%q' "$rtheme")"
+        [[ -n "$(ls -A "$BUILD_DIR/mu-plugins")" ]] && \
+            lftp_run "mirror --reverse --verbose $d $(printf '%q' "$BUILD_DIR/mu-plugins") $(printf '%q' "$rmu")"
+        [[ -z "$dry" ]] && warn "sftp transport: run 'wp acorn optimize' and purge the page cache from the hosting panel"
+    fi
+
+    log "push${dry:+ dry-run}"
+    info "Done: $ENV_NAME ${dry:+(dry run) }— $(envvar URL)"
+}
+
+doctor() {
+    info "$ENV_NAME: $TRANSPORT://$RUSER@$HOST:$PORT$RROOT"
+    if [[ "$TRANSPORT" == ssh ]]; then
+        remote_sh "test -f $(printf '%q' "$RROOT/wp-config.php")" && echo "  wp-config.php: found" || die "wp-config.php not found under ROOT"
+        remote_wp core version >/dev/null && echo "  wp-cli: ok" || die "wp-cli not available remotely"
+        remote_wp db check >/dev/null && echo "  database: ok" || die "database check failed"
+    else
+        lftp_run "cls -1 $(printf '%q' "$RROOT/wp-config.php")" >/dev/null && echo "  wp-config.php: found" || die "wp-config.php not found under ROOT"
+        echo "  wp-cli / database: not checkable over sftp"
+    fi
+}
+
+# ---------------------------------------------------------------------------------------------
+[[ $# -ge 1 ]] || { sed -n '3,12p' "$0"; exit 1; }
+case "$1" in
+    selftest) selftest; exit 0 ;;
+    -h|--help|help) sed -n '3,18p' "$0"; exit 0 ;;
+esac
+
+load_env
+select_env "$1"; shift
+cmd="${1:-}"; shift || true
+case "$cmd" in
+    doctor)    doctor ;;
+    push)      push "$@" ;;
+    wp)        [[ $# -ge 1 ]] || die "usage: bin/deploy <env> wp <args…>"
+               if [[ "$ENV_NAME" == production ]]; then
+                   case "${1:-}" in
+                       option|core|plugin|theme|user|post|search-replace|db|eval|eval-file|shell|config)
+                           warn "production wp-cli: '$1' can change data — agents run this only on explicit request" ;;
+                   esac
+               fi
+               remote_wp "$@"; log "wp $1" ;;
+    db-backup) backup_remote ;;
+    *) die "unknown command '$cmd' (doctor | push | wp | db-backup)" ;;
+esac
