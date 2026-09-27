@@ -15,8 +15,13 @@ to every change to the skill itself (they are not loaded when the skill is used 
 4. **Audit**: `scripts/audit-public.sh` must print `audit: clean`.
 5. **Package**: `scripts/package.sh` → `dist/sage-theme-builder-<version>.zip` (also checks that every
    `references/…` and `assets/…` path cited in the docs exists).
-6. **Sync local and remote**: commit, tag `v<version>`, push commit and tag to `origin`. A request to
-   update the skill includes this step — the skill is never left updated only locally. Then
+6. **Sync local and remote**: commit, annotated tag `git tag -a v<version> -m "…"`, then
+   `git push origin main --follow-tags` (the repo has `push.followTags=true`, but a plain `git push`
+   from another clone or a GUI does not push tags). Verify with `git ls-remote --tags origin`: the new
+   tag must be listed. A request to update the skill includes this step — the skill is never left
+   updated only locally.
+7. **Release**: `gh release create v<version> dist/sage-theme-builder-<version>.zip --title
+   "v<version>" --notes "<the CHANGELOG entry>"` (or from the GitHub UI on the pushed tag). Then
    re-upload the zip in claude.ai (delete the old skill entry first to avoid a `name` conflict).
 
 ## Nothing personal, nothing client-specific — ever
