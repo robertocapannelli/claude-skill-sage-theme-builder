@@ -1,0 +1,25 @@
+# bin/deploy.conf.example — template for ONE environment. Committed; holds no real value.
+#
+# Lives OUTSIDE the repository, one file per environment:
+#   ~/.config/<project-slug>/staging.conf
+#   ~/.config/<project-slug>/production.conf
+# `bin/deploy init` creates the folder (700) and copies this template (600). Fill the values by hand,
+# never paste them into a chat, never put the folder in a synced drive (iCloud, Dropbox…).
+# bin/deploy refuses to run if the permissions are not 700/600.
+#
+# Convention: a value containing "example" or "CHANGE_ME" is a placeholder; bin/deploy treats it as
+# not configured and stops, naming the key. `bin/deploy check-env` lists what is still missing.
+#
+# There is no password in this file, on purpose:
+#   - the server is reached with a dedicated SSH key (bin/deploy key-setup <env>);
+#   - the remote database credentials are read by wp-cli from the server's wp-config.php.
+
+DEPLOY_TRANSPORT=ssh                          # ssh (rsync + remote wp-cli) | sftp (hosting without shell)
+DEPLOY_HOST=ssh.example.com                   # SSH/SFTP host name, or a Host alias from ~/.ssh/config
+DEPLOY_PORT=22                                # SSH/SFTP port
+DEPLOY_USER=example_user                      # SSH/SFTP user
+DEPLOY_ROOT=/var/www/example-project/public   # absolute path of the dir containing wp-config.php — every
+                                              # remote path is validated against it: it is what keeps
+                                              # staging and production apart on a shared account
+DEPLOY_URL=https://www.example.com            # public URL of this environment (https), used by search-replace
+# DEPLOY_KEY=~/.ssh/example-project_staging_ed25519   # optional: this is the default (bin/deploy key-setup <env>)

@@ -2,17 +2,18 @@
 #
 # bin/deploy — the only route from this working copy to staging or production.
 #
-#   bin/deploy selftest                                  offline test of the path validator
-#   bin/deploy check-env                                 list .env keys still holding placeholder values
-#   bin/deploy <env> doctor                              read-only connectivity checks
-#   bin/deploy <env> push [--dry-run] [--allow-dirty]    build, then upload theme + mu-plugins
+# The environment is ALWAYS the first argument and has no default: forgetting it is an error, not a
+# run against the wrong server.
+#
+#   bin/deploy <env> doctor                              read-only checks: key, wp-config, wp-cli, DB
+#   bin/deploy <env> push [--dry-run] [--allow-dirty]    back up, build, upload theme + mu-plugins
 #   bin/deploy <env> bootstrap --plan                    FIRST deploy: show what would be transferred
 #   bin/deploy <env> bootstrap --confirm-bootstrap=<PROJECT_SLUG> [--with-db] [--no-uploads]
 #                              [--no-plugins] [--dry-run]
-#                                                        FIRST deploy: theme + mu-plugins + plugins in
-#                                                        deploy-plugins.txt + uploads (+ database)
+#                                                        FIRST deploy: theme + mu-plugins + MISSING
+#                                                        plugins from deploy-plugins.txt + uploads (+ DB)
 #   bin/deploy <env> wp <args…>                          remote wp-cli (ssh transport only)
-#   bin/deploy <env> eval-file <file.php> [args…]        run a local wp-cli script (seed, migration) remotely (ssh only)
+#   bin/deploy <env> eval-file <file.php> [args…]        run a local wp-cli script remotely (ssh only)
 #   bin/deploy <env> backup                              back up now (the same snapshot every deploy takes)
 #   bin/deploy <env> backups                             list the local backups for <env>
 #   bin/deploy <env> restore <id|latest> --confirm-restore=<PROJECT_SLUG> [--files-only|--db-only]
@@ -20,33 +21,53 @@
 #
 #   <env> = staging | production
 #
-# bootstrap ALWAYS needs the user's confirmation: run --plan, show it, ask, then pass
-# --confirm-bootstrap=<PROJECT_SLUG>. Production additionally requires --confirm-production=<PROJECT_SLUG> and is NEVER run by an agent
-# unless the user explicitly asked for a production deploy in the current request.
+# Without an environment:
+#   bin/deploy selftest                                  offline tests: paths, conf isolation, refusals
+#   bin/deploy init                                      create ~/.config/<slug>/ (700) + conf templates (600)
+#   bin/deploy check-env                                 list conf keys still holding placeholder values
+#   bin/deploy key-setup <env> [--passphrase]            create the dedicated SSH key, print the .pub
+#   bin/deploy migrate-env [--delete-env]                move a legacy .env into the per-env confs
+#   bin/deploy clone-from-prod --confirm-clone=<PROJECT_SLUG>
+#                                                        staging := copy of production (DB), one way only
 #
-# Authentication is ALWAYS by SSH key, for both transports — never a password. By default the keys
-# already on this computer are used (ssh-agent, ~/.ssh/config, ~/.ssh/id_*); <ENV>_SSH_KEY may point
-# to one specific private key instead. Password and keyboard-interactive auth are disabled, so a
-# missing key fails fast instead of prompting.
+# CONFIG LIVES OUTSIDE THE REPOSITORY, in ~/.config/<PROJECT_SLUG>/ (dir 700, files 600 — enforced):
+#   staging.conf, production.conf   one per environment (template: bin/deploy.conf.example)
+#   local.conf                      this machine: LOCAL_URL (https), LOCAL_WP_CMD… (bin/deploy.local.conf.example)
+#   backups/ dumps/ deploy.log      database dumps hold personal data and password hashes: never in the repo
+# The only project fact in this file is PROJECT_SLUG. Confs are PARSED, never sourced, and every
+# conf load starts from a clean slate, so a command that loads two confs cannot inherit values.
+# No password anywhere: SSH key only (a dedicated one per project and environment, IdentitiesOnly);
+# remote DB credentials are read by wp-cli from the server's wp-config.php, local ones from the local
+# wp-config.php.
 #
-# Every deploy (push, bootstrap, eval-file) first backs up what it can overwrite — the remote theme,
-# mu-plugins, the plugins it uploads and (ssh) the database — into .deploy-backups/<slug>-<env>-<ts>/.
-# If the backup fails, the deploy does not start. `restore` puts a backup back in one command.
+# bootstrap, restore and clone-from-prod ALWAYS need the user's confirmation. Production additionally
+# requires --confirm-production=<PROJECT_SLUG> and is NEVER run by an agent unless the user explicitly
+# asked for it in the current request; overwriting the production database is refused by the code.
 #
-# Every push runs the build first: build output is gitignored, so the working copy is never trusted
-# to contain it. Config is read from .env (chmod 600, gitignored) — see .env.example.
+# Every deploy (push, bootstrap, eval-file) first backs up what it can overwrite — remote theme,
+# mu-plugins and (ssh) the database. If the backup fails, the deploy does not start.
 #
 # Compatible with the bash 3.2 that ships with macOS.
 
 set -euo pipefail
 IFS=$'\n\t'
 
+# ---- the ONLY project-specific lines of this file (set at kickoff) -----------------------------
+PROJECT_SLUG="example-project"          # lowercase slug: names ~/.config/<slug>/ and the SSH keys
+THEME_SLUG="$PROJECT_SLUG"              # theme folder name, if it ever differs from the project slug
+# -------------------------------------------------------------------------------------------------
+
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-BUILD_DIR=".deploy-build"
-LOG_DIR=".deploy-logs"
-BACKUP_DIR=".deploy-backups"
+THEME_DIR="wp-content/themes/$THEME_SLUG"
+MU_PLUGINS_DIR="wp-content/mu-plugins"
+CONF_DIR="${DEPLOY_CONF_DIR:-$HOME/.config/$PROJECT_SLUG}"
+BACKUP_DIR="$CONF_DIR/backups"
+DUMP_DIR="$CONF_DIR/dumps"
+LOG_FILE="$CONF_DIR/deploy.log"
+BUILD_DIR=".deploy-build"               # built theme only — no data, no config
 
 die()  { printf 'deploy: %s\n' "$*" >&2; exit 1; }
 info() { printf '\033[1m==>\033[0m %s\n' "$*"; }
@@ -72,9 +93,9 @@ guard_path() {
 }
 
 selftest() {
-    local fail=0 r
-    ok()  { if ! guard_path "$1" "$2" >/dev/null; then printf 'FAIL (rejected) %s | %s\n' "$1" "$2"; fail=1; fi; }
-    bad() { if guard_path "$1" "$2" >/dev/null; then printf 'FAIL (accepted) %s | %s\n' "$1" "$2"; fail=1; fi; }
+    local pass=0 fail=0 r
+    ok()  { if guard_path "$1" "$2" >/dev/null; then pass=$((pass+1)); else printf 'FAIL (rejected) %s | %s\n' "$1" "$2"; fail=$((fail+1)); fi; }
+    bad() { if guard_path "$1" "$2" >/dev/null; then printf 'FAIL (accepted) %s | %s\n' "$1" "$2"; fail=$((fail+1)); else pass=$((pass+1)); fi; }
     r=/home/u/staging
     ok  "$r" wp-content/themes/acme
     ok  "$r" wp-content/mu-plugins/
@@ -94,27 +115,103 @@ selftest() {
     bad relative/root wp-content
     bad /home/u/../root wp-content
     bad '/home/u/sta ging' wp-content
-    [[ $fail -eq 0 ]] && echo "selftest: all cases pass" || die "selftest failed"
+
+    # ---- conf isolation: two loads in a row must not contaminate each other. The second conf
+    # omits port, transport and key, and the first carries a key that belongs in local.conf.
+    local dir
+    dir="$(mktemp -d)"; chmod 700 "$dir"
+    cat > "$dir/staging.conf" <<CONF_B
+DEPLOY_HOST=host-b
+DEPLOY_USER=user-b
+DEPLOY_ROOT=/home/u/b
+DEPLOY_URL=https://b.acme.test
+CONF_B
+    cat > "$dir/production.conf" <<CONF_A
+DEPLOY_HOST=host-a
+DEPLOY_USER=user-a
+DEPLOY_ROOT=/home/u/a
+DEPLOY_URL=https://a.acme.test
+DEPLOY_PORT=2201
+DEPLOY_TRANSPORT=sftp
+DEPLOY_KEY=$dir/key-a
+LOCAL_URL=https://leak.acme.test
+CONF_A
+    chmod 600 "$dir/staging.conf" "$dir/production.conf"
+    local got
+    got="$( CONF_DIR="$dir"
+            read_env_conf production 2>/dev/null
+            read_env_conf staging 2>/dev/null
+            printf '%s|%s|%s|%s|%s|%s|%s|%s' "$HOST" "$RUSER" "$RROOT" "$URL" "$PORT" "$TRANSPORT" "$KEY" "${LOCAL_URL:-}" )"
+    if [[ "$got" == "host-b|user-b|/home/u/b|https://b.acme.test|22|ssh|$(default_key staging)|" ]]; then
+        pass=$((pass+1))
+    else
+        printf 'FAIL conf_isolation: staging inherited values from production.conf\n'; fail=$((fail+1))
+    fi
+    # permissions are enforced: a 644 conf is refused
+    chmod 644 "$dir/staging.conf"
+    if ( CONF_DIR="$dir"; read_env_conf staging ) >/dev/null 2>&1; then
+        printf 'FAIL conf_perms: a 644 conf was accepted\n'; fail=$((fail+1)); else pass=$((pass+1)); fi
+    rm -rf "$dir"
+
+    # ---- LOCAL_URL must be real and https
+    lu_ok() { if ( LOCAL_URL="$1"; CONF_DIR=/nonexistent; require_local_url ) >/dev/null 2>&1; then pass=$((pass+1)); else printf 'FAIL require_local_url "%s" rejected\n' "$1"; fail=$((fail+1)); fi; }
+    lu_ko() { if ( LOCAL_URL="$1"; CONF_DIR=/nonexistent; require_local_url ) >/dev/null 2>&1; then printf 'FAIL require_local_url "%s" accepted\n' "$1"; fail=$((fail+1)); else pass=$((pass+1)); fi; }
+    lu_ok https://acme.test
+    lu_ok https://acme.test/
+    lu_ko http://acme.test
+    lu_ko acme.test
+    lu_ko ""
+    lu_ko https://example-project.test
+
+    # ---- refusals: each runs this script in a subprocess against a config dir that does not
+    # exist, so a missing refusal fails on the config instead of touching a server.
+    refuses() {
+        local why="$1" needle="$2" out; shift 2
+        if out="$(DEPLOY_CONF_DIR=/nonexistent/deploy-selftest "$SELF" "$@" 2>&1)"; then
+            printf 'FAIL %s: accepted\n' "$why"; fail=$((fail+1))
+        elif [[ "$out" != *"$needle"* ]]; then
+            printf 'FAIL %s: refused for the wrong reason: %s\n' "$why" "$out"; fail=$((fail+1))
+        else pass=$((pass+1)); fi
+    }
+    refuses 'no environment'               'missing environment'     push
+    refuses 'invented environment'         'unknown environment'     prod push
+    refuses 'production bootstrap --with-db' 'never overwritten'     production bootstrap --with-db --confirm-bootstrap=x
+    refuses 'production restore w/o prod confirm' 'confirm-production' production restore latest --confirm-restore=x
+    refuses 'clone without confirmation'   'confirm-clone'           clone-from-prod
+    refuses 'key-setup without env'        'usage: bin/deploy key-setup' key-setup
+
+    printf 'selftest: %d ok, %d failed\n' "$pass" "$fail"
+    [[ $fail -eq 0 ]] || die "selftest failed"
 }
 
 # ---------------------------------------------------------------------------------------------
-# .env loader — parsed, never sourced (sourcing would execute whatever the file contains).
-load_env() {
-    [[ -f .env ]] || die ".env not found at repository root — copy .env.example and fill it in"
-    local perms
-    perms="$(stat -c %a .env 2>/dev/null || stat -f %Lp .env)"
-    [[ "$perms" == 600 ]] || die ".env must be chmod 600 (currently $perms)"
-    if git ls-files --error-unmatch .env >/dev/null 2>&1; then
-        die ".env is TRACKED by git — run 'git rm --cached .env' and rotate any secret that was pushed"
-    fi
-    git check-ignore -q .env 2>/dev/null || die ".env is not gitignored — fix .gitignore first"
-    if [[ -f .env.example ]] && git check-ignore -q .env.example 2>/dev/null; then
-        warn ".env.example is gitignored — it must be tracked (add '!.env.example' to .gitignore)"
-    fi
-    local line key val
+# Config layer. Keys each file may set — anything else is ignored with a warning (name only).
+ENV_KEYS="DEPLOY_TRANSPORT DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_KEY DEPLOY_ROOT DEPLOY_URL"
+LOCAL_KEYS="LOCAL_URL LOCAL_WP_CMD LOCAL_COMPOSER_CMD BACKUP_KEEP"
+DERIVED_VARS="ENV_NAME CONF TRANSPORT HOST PORT RUSER KEY RROOT URL"
+
+# A value containing "example" or "CHANGE_ME" is a placeholder from a template: treat it as unset.
+is_placeholder() { case "$1" in ""|*example*|*CHANGE_ME*) return 0 ;; *) return 1 ;; esac; }
+
+perms_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+
+check_conf_dir() {
+    [[ -d "$CONF_DIR" ]] || die "config directory $CONF_DIR not found — run: bin/deploy init"
+    [[ "$(perms_of "$CONF_DIR")" == 700 ]] || die "$CONF_DIR must be chmod 700 (is $(perms_of "$CONF_DIR"))"
+}
+
+check_conf_file() {
+    [[ -f "$1" ]] || die "config file $1 not found — run: bin/deploy init"
+    [[ "$(perms_of "$1")" == 600 ]] || die "$1 must be chmod 600 (is $(perms_of "$1"))"
+}
+
+# parse_conf <file> <allowed keys> — KEY=value lines; quotes stripped; "~/" expanded. Never sourced.
+parse_conf() {
+    local file="$1" allowed line key val
+    allowed=" $(printf '%s' "$2" | tr '\n' ' ') "
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "$line" =~ ^[[:space:]]*(#.*)?$ ]] && continue
-        [[ "$line" =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]] || die "malformed line in .env (key: ${line%%=*})"
+        [[ "$line" =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]] || die "malformed line in $file (key: ${line%%=*})"
         key="${BASH_REMATCH[1]}"; val="${BASH_REMATCH[2]}"
         if   [[ "$val" =~ ^\"([^\"]*)\" ]]; then val="${BASH_REMATCH[1]}"
         elif [[ "$val" =~ ^\'([^\']*)\' ]]; then val="${BASH_REMATCH[1]}"
@@ -124,74 +221,114 @@ load_env() {
         fi
         # shellcheck disable=SC2088  # literal "~/" prefix match is intended
         case "$val" in "~/"*) val="$HOME/${val#\~/}" ;; esac
-        printf -v "$key" '%s' "$val"
-    done < .env
-    : "${PROJECT_SLUG:?PROJECT_SLUG missing in .env}"
-    : "${THEME_DIR:?THEME_DIR missing in .env}"
-    MU_PLUGINS_DIR="${MU_PLUGINS_DIR:-wp-content/mu-plugins}"
+        case "$allowed" in
+            *" $key "*) printf -v "$key" '%s' "$val" ;;
+            *) warn "$(basename "$file"): key $key is not used here — ignored" ;;
+        esac
+    done < "$file"
 }
 
-envvar() { local n="${PREFIX}_$1"; printf '%s' "${!n:-}"; }
-
-# A value containing "example" or "CHANGE_ME" is a placeholder from .env.example: treat it as unset.
-is_placeholder() { case "$1" in ""|*example*|*CHANGE_ME*) return 0 ;; *) return 1 ;; esac; }
-
-check_env() {
-    local key val missing=0 env keys
-    for env in STAGING PRODUCTION; do
-        keys=(URL TRANSPORT HOST PORT USER ROOT)
-        for key in "${keys[@]}"; do
-            val="${env}_${key}"; val="${!val:-}"
-            if is_placeholder "$val"; then printf '  ✗ %s_%s\n' "$env" "$key"; missing=1; fi
-        done
-        val="${env}_SSH_KEY"; val="${!val:-default}"
-        if [[ "$val" != default ]] && { is_placeholder "$val" || [[ ! -f "$val" ]]; }; then
-            printf '  ✗ %s_SSH_KEY (not "default" and no key file at that path)\n' "$env"; missing=1
-        fi
-    done
-    for key in PROJECT_SLUG THEME_DIR; do
-        is_placeholder "${!key:-}" && { printf '  ✗ %s\n' "$key"; missing=1; }
-    done
-    if [[ $missing -eq 0 ]]; then echo "check-env: staging and production fully configured"; else echo "check-env: the keys above still hold placeholder values"; fi
-    return 0
+# reset_env_conf — the clean slate every env conf load starts from. Without it, a command that
+# loads two confs in one process (clone-from-prod) inherits every key the second one omits —
+# host, root, URL, port — and the checks after the load see the wrong values as valid.
+reset_env_conf() {
+    local v
+    local IFS=' '
+    for v in $ENV_KEYS $DERIVED_VARS; do unset "$v"; done
 }
 
-select_env() {
-    case "$1" in
-        staging)    PREFIX=STAGING ;;
-        production) PREFIX=PRODUCTION ;;
-        *) die "unknown environment '$1' (staging|production)" ;;
+default_key() { printf '%s/.ssh/%s_%s_ed25519' "$HOME" "$PROJECT_SLUG" "$1"; }
+
+# read_env_conf <env> — clean slate, parse, derive. Pure with respect to the network; the
+# filesystem checks on the key happen in validate_env, so selftest can exercise this offline.
+read_env_conf() {
+    reset_env_conf
+    case "${1:-}" in
+        staging|production) ENV_NAME="$1" ;;
+        '') die "missing environment: bin/deploy <staging|production> <command>" ;;
+        *)  die "unknown environment '$1' (staging | production)" ;;
     esac
-    ENV_NAME="$1"
-    TRANSPORT="$(envvar TRANSPORT)"; HOST="$(envvar HOST)"; PORT="$(envvar PORT)"
-    RUSER="$(envvar USER)"; KEY="$(envvar SSH_KEY)"; RROOT="$(envvar ROOT)"
-    PORT="${PORT:-22}"; TRANSPORT="${TRANSPORT:-ssh}"
+    CONF="$CONF_DIR/$ENV_NAME.conf"
+    check_conf_file "$CONF"
+    parse_conf "$CONF" "$ENV_KEYS"
+    TRANSPORT="${DEPLOY_TRANSPORT:-ssh}"; HOST="${DEPLOY_HOST:-}"; PORT="${DEPLOY_PORT:-22}"
+    RUSER="${DEPLOY_USER:-}"; RROOT="${DEPLOY_ROOT:-}"; URL="${DEPLOY_URL:-}"
+    URL="${URL%/}"
+    KEY="${DEPLOY_KEY:-$(default_key "$ENV_NAME")}"
+}
+
+validate_env() {
     local k
-    for k in HOST USER ROOT; do
-        is_placeholder "$(envvar "$k")" && die "${PREFIX}_$k in .env is still a placeholder — set the real value (bin/deploy check-env)"
+    for k in DEPLOY_HOST DEPLOY_USER DEPLOY_ROOT DEPLOY_URL; do
+        is_placeholder "${!k:-}" && die "$k in $CONF is missing or still a placeholder (bin/deploy check-env)"
     done
-    [[ -n "$HOST" && -n "$RUSER" && -n "$RROOT" ]] || die "${PREFIX}_HOST/_USER/_ROOT must be set in .env"
-    case "$HOST"  in *[!A-Za-z0-9._-]*) die "${PREFIX}_HOST contains invalid characters" ;; esac   # a ~/.ssh/config alias is fine
-    case "$RUSER" in *[!A-Za-z0-9._-]*) die "${PREFIX}_USER contains invalid characters" ;; esac
-    case "$PORT"  in *[!0-9]*) die "${PREFIX}_PORT must be numeric" ;; esac
-    RROOT="$(guard_path "$RROOT" .)" || die "${PREFIX}_ROOT is not a valid absolute path"
-    # SSH key: "default" (or empty) = the keys already on this computer; otherwise a key file path.
-    case "$KEY" in ""|default) KEY="" ;; esac
-    if [[ -n "$KEY" ]]; then
-        is_placeholder "$KEY" && die "${PREFIX}_SSH_KEY is still a placeholder — use \"default\" or a real key path"
-        [[ -f "$KEY" ]] || die "${PREFIX}_SSH_KEY: no key file at $KEY"
-    fi
+    case "$HOST"  in *[!A-Za-z0-9._-]*) die "DEPLOY_HOST in $CONF contains invalid characters" ;; esac
+    case "$RUSER" in *[!A-Za-z0-9._-]*) die "DEPLOY_USER in $CONF contains invalid characters" ;; esac
+    case "$PORT"  in *[!0-9]*) die "DEPLOY_PORT in $CONF must be numeric" ;; esac
+    [[ "$URL" == https://* ]] || die "DEPLOY_URL in $CONF must start with https://"
+    RROOT="$(guard_path "$RROOT" .)" || die "DEPLOY_ROOT in $CONF is not a valid absolute path"
+    [[ "$KEY" == default ]] && die "DEPLOY_KEY=default is no longer supported: run bin/deploy key-setup $ENV_NAME (dedicated key)"
+    is_placeholder "$KEY" && die "DEPLOY_KEY in $CONF is still a placeholder"
+    [[ -f "$KEY" ]] || die "SSH key $KEY not found — run: bin/deploy key-setup $ENV_NAME"
     case "$TRANSPORT" in
         ssh)  ;;
         sftp) command -v lftp >/dev/null || die "sftp transport needs lftp (brew install lftp)" ;;
-        *) die "${PREFIX}_TRANSPORT must be ssh or sftp" ;;
+        *) die "DEPLOY_TRANSPORT in $CONF must be ssh or sftp" ;;
     esac
 }
 
+select_env() {   # select_env <env> — the full, checked load
+    check_conf_dir
+    read_env_conf "${1:-}"
+    validate_env
+}
+
+# local.conf is optional for push/doctor; commands that need LOCAL_URL call require_local_url.
+load_local_conf() {
+    local v IFS=' '
+    for v in $LOCAL_KEYS; do unset "$v"; done
+    [[ -f "$CONF_DIR/local.conf" ]] || return 0
+    check_conf_file "$CONF_DIR/local.conf"
+    parse_conf "$CONF_DIR/local.conf" "$LOCAL_KEYS"
+}
+
+# require_local_url — LOCAL_URL present, real and https, checked BEFORE any export or search-replace:
+# an http:// LOCAL_URL rewrites every internal link in the wrong scheme, and a search-replace for
+# http:// in a database that says https:// silently leaves the local domain behind on the server.
+require_local_url() {
+    is_placeholder "${LOCAL_URL:-}" && die "LOCAL_URL missing or still a placeholder in $CONF_DIR/local.conf"
+    [[ "$LOCAL_URL" == https://* ]] || die "LOCAL_URL in $CONF_DIR/local.conf must be https (got a non-https URL)"
+    LOCAL_URL="${LOCAL_URL%/}"
+}
+
+envvar() { case "$1" in URL) printf '%s' "$URL" ;; *) local n="DEPLOY_$1"; printf '%s' "${!n:-}" ;; esac; }
+
+check_env() {
+    local env k bad=0
+    check_conf_dir
+    for env in staging production; do
+        if [[ ! -f "$CONF_DIR/$env.conf" ]]; then echo "  ✗ $env.conf missing (bin/deploy init)"; bad=1; continue; fi
+        local out
+        out="$( ( read_env_conf "$env"
+                  for k in DEPLOY_HOST DEPLOY_USER DEPLOY_ROOT DEPLOY_URL; do
+                      is_placeholder "${!k:-}" && echo "  ✗ $env.conf: $k"
+                  done
+                  [[ -f "$KEY" ]] || echo "  ✗ $env: SSH key not created yet (bin/deploy key-setup $env)"
+                  true ) 2>&1 )" || true
+        [[ -n "$out" ]] && { printf '%s\n' "$out"; bad=1; }
+    done
+    load_local_conf
+    is_placeholder "${LOCAL_URL:-}" && { echo "  ✗ local.conf: LOCAL_URL"; bad=1; }
+    [[ "$PROJECT_SLUG" == example-project ]] && { echo "  ✗ bin/deploy: PROJECT_SLUG is still example-project"; bad=1; }
+    if [[ $bad -eq 0 ]]; then echo "check-env: staging, production and local fully configured"
+    else echo "check-env: fill the keys above by hand in $CONF_DIR (values are never printed)"; fi
+    return 0
+}
+
 log() {
-    mkdir -p "$LOG_DIR"
+    mkdir -p "$CONF_DIR"
     printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ENV_NAME" \
-        "$(git rev-parse --short HEAD 2>/dev/null || echo no-git)" "${USER:-?}" "$*" >> "$LOG_DIR/deploy.log"
+        "$(git rev-parse --short HEAD 2>/dev/null || echo no-git)" "${USER:-?}" "$*" >> "$LOG_FILE"
 }
 
 SSH_OPTS=()
@@ -199,8 +336,7 @@ SSH_OPTS=()
 ssh_auth_opts() {
     SSH_OPTS=(-o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no
               -o PreferredAuthentications=publickey -o ConnectTimeout=15)
-    if [[ -n "$KEY" ]]; then SSH_OPTS+=(-i "$KEY" -o IdentitiesOnly=yes); fi
-    return 0
+    SSH_OPTS+=(-i "$KEY" -o IdentitiesOnly=yes)   # the dedicated key and nothing else
 }
 ssh_opts() { ssh_auth_opts; SSH_OPTS=(-p "$PORT" "${SSH_OPTS[@]}"); }
 ssh_e()    { local IFS=' '; ssh_opts; printf 'ssh %s' "${SSH_OPTS[*]}"; }   # for rsync -e (IFS is \n\t globally)
@@ -257,7 +393,7 @@ build_release() {
         local -a composer_cmd
         IFS=' ' read -r -a composer_cmd <<< "${LOCAL_COMPOSER_CMD:-composer}"
         command -v "${composer_cmd[0]}" >/dev/null \
-            || die "'${composer_cmd[0]}' not found — install composer or set LOCAL_COMPOSER_CMD in .env"
+            || die "'${composer_cmd[0]}' not found — install composer or set LOCAL_COMPOSER_CMD in ~/.config/<slug>/local.conf"
         "${composer_cmd[@]}" install --no-dev --optimize-autoloader --no-interaction --no-progress \
             --working-dir="$BUILD_DIR/theme" >/dev/null \
             || die "composer install failed in $BUILD_DIR/theme (LOCAL_COMPOSER_CMD: ${LOCAL_COMPOSER_CMD:-composer})"
@@ -271,7 +407,6 @@ build_release() {
     return 0
 }
 
-BACKUP_PLUGINS=()   # extra plugin folders a deploy will overwrite (set by bootstrap)
 LAST_BACKUP=""
 
 # backup_remote — snapshot everything a deploy can overwrite. Any failure stops the deploy.
@@ -279,15 +414,16 @@ LAST_BACKUP=""
 # backups costs little disk.
 backup_remote() {
     local ts dir rel rpath p sha rels prev="" d
-    ts="$(date +%Y%m%d-%H%M%S)"; dir="$BACKUP_DIR/$PROJECT_SLUG-$ENV_NAME-$ts"
-    for d in "$BACKUP_DIR/$PROJECT_SLUG-$ENV_NAME-"*; do [[ -f "$d/manifest" ]] && prev="$d"; done
-    mkdir -p "$dir/files"; chmod 700 "$BACKUP_DIR" "$dir"
+    for d in "$BACKUP_DIR/$ENV_NAME-"*; do [[ -f "$d/manifest" ]] && prev="$d"; done
+    ts="$(date +%Y%m%d-%H%M%S)"; dir="$BACKUP_DIR/$ENV_NAME-$ts"
+    local n=1
+    while [[ -e "$dir" ]]; do n=$((n+1)); dir="$BACKUP_DIR/$ENV_NAME-$ts-$n"; done   # never reuse a backup dir
+    mkdir -p "$dir/files"; chmod 700 "$CONF_DIR" "$BACKUP_DIR" "$dir"
     sha="$(git rev-parse --short HEAD 2>/dev/null || echo no-git)"
     {   echo "env $ENV_NAME"; echo "created $(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo "before-commit $sha"
         echo "remote $TRANSPORT://$RUSER@$HOST$RROOT"; } > "$dir/manifest"
 
     rels=("$THEME_DIR" "$MU_PLUGINS_DIR")
-    for p in "${BACKUP_PLUGINS[@]+"${BACKUP_PLUGINS[@]}"}"; do rels+=("wp-content/plugins/$p"); done
     for rel in "${rels[@]}"; do
         rpath="$(guard_path "$RROOT" "$rel")" || die "backup: path fails validation: $rel"
         if remote_dir_exists "$rpath"; then
@@ -295,7 +431,7 @@ backup_remote() {
             mkdir -p "$dir/files/$rel"
             if [[ "$TRANSPORT" == ssh ]]; then
                 local link=()
-                [[ -n "$prev" && -d "$prev/files/$rel" ]] && link=(--link-dest="$ROOT_DIR/$prev/files/$rel")
+                [[ -n "$prev" && -d "$prev/files/$rel" ]] && link=(--link-dest="$prev/files/$rel")
                 rsync -az "${link[@]+"${link[@]}"}" -e "$(ssh_e)" "$RUSER@$HOST:$rpath/" "$dir/files/$rel/" \
                     || die "backup of $rel failed — deploy NOT started"
             else
@@ -328,7 +464,7 @@ prune_backups() {   # keep the newest BACKUP_KEEP backups for this environment (
     local keep="${BACKUP_KEEP:-10}" all=() d n i
     case "$keep" in ''|*[!0-9]*) keep=10 ;; esac
     [[ "$keep" -ge 1 ]] || keep=1
-    for d in "$BACKUP_DIR/$PROJECT_SLUG-$ENV_NAME-"*; do [[ -d "$d" ]] && all+=("$d"); done
+    for d in "$BACKUP_DIR/$ENV_NAME-"*; do [[ -d "$d" ]] && all+=("$d"); done
     n=${#all[@]}
     for (( i = 0; i < n - keep; i++ )); do rm -rf "${all[$i]}"; done
     return 0
@@ -336,7 +472,7 @@ prune_backups() {   # keep the newest BACKUP_KEEP backups for this environment (
 
 list_backups() {
     local d found=""
-    for d in "$BACKUP_DIR/$PROJECT_SLUG-$ENV_NAME-"*; do
+    for d in "$BACKUP_DIR/$ENV_NAME-"*; do
         [[ -f "$d/manifest" ]] || continue
         found=1
         printf '%s  %s  commit-before %s  %s\n' "$(basename "$d")" \
@@ -362,10 +498,10 @@ restore() {
         esac
     done
     if [[ "$id" == latest ]]; then
-        for dir in "$BACKUP_DIR/$PROJECT_SLUG-$ENV_NAME-"*; do [[ -f "$dir/manifest" ]] && id="$(basename "$dir")"; done
+        for dir in "$BACKUP_DIR/$ENV_NAME-"*; do [[ -f "$dir/manifest" ]] && id="$(basename "$dir")"; done
         [[ "$id" != latest ]] || die "no backups for $ENV_NAME"
     fi
-    case "$id" in "$PROJECT_SLUG-$ENV_NAME-"*) ;; *) die "backup '$id' does not belong to $ENV_NAME" ;; esac
+    case "$id" in "$ENV_NAME-"*) ;; *) die "backup '$id' does not belong to $ENV_NAME" ;; esac
     case "$id" in *[!A-Za-z0-9._-]*) die "invalid backup id" ;; esac
     dir="$BACKUP_DIR/$id"
     [[ -f "$dir/manifest" ]] || die "backup not found: $dir"
@@ -544,7 +680,7 @@ bootstrap() {
         esac
     done
 
-    local plugins=() p theme_slug local_url remote_url uploads="wp-content/uploads"
+    local plugins=() skipped=() p theme_slug local_url remote_url uploads="wp-content/uploads"
     if [[ -z "$no_plugins" ]]; then
         while IFS= read -r p; do [[ -n "$p" ]] && plugins+=("$p"); done < <(read_plugin_list)
         for p in "${plugins[@]+"${plugins[@]}"}"; do
@@ -554,12 +690,20 @@ bootstrap() {
     theme_slug="$(basename "$THEME_DIR")"
     # No trailing slash on either side: siteurl/home have none, and a mismatch would turn
     # https://local.test/page into https://staging.example.com//page during search-replace.
-    local_url="${LOCAL_URL:-}"; remote_url="$(envvar URL)"
-    local_url="${local_url%/}"; remote_url="${remote_url%/}"
-    is_placeholder "$remote_url" && die "${PREFIX}_URL is still a placeholder"
+    remote_url="$URL"; local_url=""
     if [[ -n "$with_db" ]]; then
+        [[ "$ENV_NAME" != production ]] || die "bootstrap --with-db does not exist for production: the production database is never overwritten"
         [[ "$TRANSPORT" == ssh ]] || die "--with-db needs the ssh transport (remote wp-cli); over sftp import the DB from the hosting panel"
-        is_placeholder "$local_url" && die "LOCAL_URL is still a placeholder — needed for the URL search-replace"
+        require_local_url; local_url="$LOCAL_URL"
+    fi
+    # Plugins already on the server are NEVER overwritten: they are updated from each environment's
+    # admin, so the local copy is usually older — pushing it would silently downgrade them.
+    if [[ ${#plugins[@]} -gt 0 ]]; then
+        local missing=()
+        for p in "${plugins[@]}"; do
+            if remote_dir_exists "$(guard_path "$RROOT" "wp-content/plugins/$p")"; then skipped+=("$p"); else missing+=("$p"); fi
+        done
+        plugins=("${missing[@]+"${missing[@]}"}")
     fi
 
     # ---- the plan: always printed, and the only output of --plan ------------------------------
@@ -569,6 +713,7 @@ bootstrap() {
     if [[ -n "$no_plugins" ]]; then printf '  %-12s %s\n' "plugins" "skipped (--no-plugins)"
     elif [[ ${#plugins[@]} -eq 0 ]]; then printf '  %-12s %s\n' "plugins" "none (deploy-plugins.txt empty or missing)"
     else for p in "${plugins[@]}"; do printf '  %-12s %s\n' "plugin" "wp-content/plugins/$p  $(du -sh "wp-content/plugins/$p" | cut -f1)"; done; fi
+    for p in "${skipped[@]+"${skipped[@]}"}"; do printf '  %-12s %s\n' "plugin" "$p — already on the server: left alone (never overwritten)"; done
     if [[ -n "$no_uploads" ]]; then printf '  %-12s %s\n' "uploads" "skipped (--no-uploads)"
     elif [[ -d "$uploads" ]]; then printf '  %-12s %s\n' "uploads" "$uploads  $(du -sh "$uploads" | cut -f1)  (added/updated, never deleted remotely)"
     else printf '  %-12s %s\n' "uploads" "none locally"; fi
@@ -603,8 +748,7 @@ bootstrap() {
         [[ "$confirm_prod" == "$PROJECT_SLUG" ]] || die "production bootstrap also requires --confirm-production=$PROJECT_SLUG"
     fi
 
-    # ---- 1. backup: push (step 2) snapshots theme, mu-plugins, the plugins below and the DB ----
-    BACKUP_PLUGINS=("${plugins[@]+"${plugins[@]}"}")   # push (step 2) backs these up too, with theme, mu-plugins, DB
+    # ---- 1. backup: push (step 2) snapshots theme, mu-plugins and the DB before writing ---------
 
     # ---- 2. theme + mu-plugins (build included) -------------------------------------------------
     push "${push_args[@]+"${push_args[@]}"}"
@@ -612,7 +756,7 @@ bootstrap() {
     # ---- 3. plugins -----------------------------------------------------------------------------
     for p in "${plugins[@]+"${plugins[@]}"}"; do
         info "Plugin: $p"
-        transfer "wp-content/plugins/$p" "wp-content/plugins/$p" 1 "$dry"
+        transfer "wp-content/plugins/$p" "wp-content/plugins/$p" 0 "$dry"
     done
 
     # ---- 4. uploads -----------------------------------------------------------------------------
@@ -623,7 +767,7 @@ bootstrap() {
 
     # ---- 5. database ----------------------------------------------------------------------------
     if [[ -n "$with_db" && -z "$dry" ]]; then
-        local dump="$BUILD_DIR/db.sql" esc_l esc_r
+        local dump="$BUILD_DIR/db.sql" safe esc_l esc_r
         info "Exporting local database"
         # Export to a FILE (written by mysqldump), never to stdout: a containerised wp-cli can print
         # PHP notices/deprecations on stdout, which would end up inside the dump. The path is
@@ -635,6 +779,10 @@ bootstrap() {
             || die "local database export does not look like a SQL dump — check $dump"
         grep -q -i -e '^Deprecated:' -e '^Warning:' -e '^Notice:' -e '^PHP ' "$dump" \
             && die "local database export contains PHP messages — not importing it"
+        # Out of the repository at once: a dump holds personal data and password hashes.
+        mkdir -p "$DUMP_DIR"; chmod 700 "$DUMP_DIR"
+        safe="$DUMP_DIR/local-$(date +%Y%m%d-%H%M%S).sql"
+        ( umask 077; mv "$dump" "$safe" ); chmod 600 "$safe"; dump="$safe"
         info "Importing into $ENV_NAME"
         remote_wp db import - < "$dump"
         info "Replacing $local_url → $remote_url"
@@ -662,14 +810,14 @@ bootstrap() {
 }
 
 doctor() {
-    info "$ENV_NAME: $TRANSPORT://$RUSER@$HOST:$PORT$RROOT (key: ${KEY:-default keys on this computer})"
+    info "$ENV_NAME: $TRANSPORT://$RUSER@$HOST:$PORT$RROOT (key: $KEY)"
     ssh_opts
     if [[ "$TRANSPORT" == sftp ]]; then
         : # sftp-only hosts often refuse a shell command: the lftp listing below tests the key instead
     elif ssh "${SSH_OPTS[@]}" "$RUSER@$HOST" true 2>/dev/null; then
         echo "  ssh key authentication: ok"
     else
-        die "ssh key authentication failed — load the key (ssh-add --apple-use-keychain ~/.ssh/<key>), check ~/.ssh/config, or set ${PREFIX}_SSH_KEY; the server must have the public key in ~/.ssh/authorized_keys"
+        die "ssh key authentication failed — add the public key on the server (bin/deploy key-setup $ENV_NAME prints it) or, for a passphrase key, ssh-add --apple-use-keychain $KEY"
     fi
     if [[ "$TRANSPORT" == ssh ]]; then
         remote_sh "test -f $(printf '%q' "$RROOT/wp-config.php")" && echo "  wp-config.php: found" || die "wp-config.php not found under ROOT"
@@ -677,25 +825,207 @@ doctor() {
         remote_wp db check >/dev/null && echo "  database: ok" || die "database check failed"
     else
         lftp_run "cls -1 $(printf '%q' "$RROOT/wp-config.php")" >/dev/null && echo "  sftp key authentication + wp-config.php: ok" \
-            || die "sftp failed — key not accepted (ssh-add, ~/.ssh/config, ${PREFIX}_SSH_KEY) or wp-config.php not under ROOT"
+            || die "sftp failed — key not accepted (bin/deploy key-setup $ENV_NAME prints the public key) or wp-config.php not under DEPLOY_ROOT"
         echo "  wp-cli / database: not checkable over sftp"
     fi
 }
 
 # ---------------------------------------------------------------------------------------------
-[[ $# -ge 1 ]] || { sed -n '3,12p' "$0"; exit 1; }
+# Commands without an environment.
+
+init_conf() {
+    local f
+    mkdir -p "$CONF_DIR" "$BACKUP_DIR" "$DUMP_DIR"
+    chmod 700 "$CONF_DIR" "$BACKUP_DIR" "$DUMP_DIR"
+    for f in staging production; do
+        if [[ -f "$CONF_DIR/$f.conf" ]]; then echo "  kept     $CONF_DIR/$f.conf"
+        else
+            [[ -f bin/deploy.conf.example ]] || die "bin/deploy.conf.example missing in the repository"
+            ( umask 077; cp bin/deploy.conf.example "$CONF_DIR/$f.conf" ); chmod 600 "$CONF_DIR/$f.conf"
+            echo "  created  $CONF_DIR/$f.conf"
+        fi
+    done
+    if [[ -f "$CONF_DIR/local.conf" ]]; then echo "  kept     $CONF_DIR/local.conf"
+    else
+        [[ -f bin/deploy.local.conf.example ]] || die "bin/deploy.local.conf.example missing in the repository"
+        ( umask 077; cp bin/deploy.local.conf.example "$CONF_DIR/local.conf" ); chmod 600 "$CONF_DIR/local.conf"
+        echo "  created  $CONF_DIR/local.conf"
+    fi
+    echo "init: fill the values by hand (never paste them into a chat), then: bin/deploy check-env"
+}
+
+key_setup() {
+    local env="${1:-}" pass="" key
+    case "$env" in staging|production) ;; *) die "usage: bin/deploy key-setup <staging|production> [--passphrase]" ;; esac
+    [[ "${2:-}" == --passphrase ]] && pass=1
+    key="$(default_key "$env")"
+    if [[ -f "$CONF_DIR/$env.conf" ]]; then read_env_conf "$env"; [[ "$KEY" != default ]] && ! is_placeholder "$KEY" && key="$KEY"; fi
+    mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"
+    if [[ -f "$key" ]]; then
+        echo "key already present: $key"
+    elif [[ -n "$pass" ]]; then
+        # Interactive: run it in your own terminal. Then add the key to the agent/Keychain so
+        # BatchMode can use it: ssh-add --apple-use-keychain "$key"
+        ssh-keygen -t ed25519 -a 100 -f "$key" -C "$PROJECT_SLUG-$env-deploy"
+        echo "now: ssh-add --apple-use-keychain $key"
+    else
+        ssh-keygen -q -t ed25519 -a 100 -N "" -f "$key" -C "$PROJECT_SLUG-$env-deploy"
+    fi
+    chmod 600 "$key"
+    printf '\nPublic key to add on the %s server (hosting panel → SSH keys, or ~/.ssh/authorized_keys):\n\n' "$env"
+    cat "$key.pub"
+}
+
+# migrate_env — move a legacy repo-root .env into the per-environment confs. Never prints a value:
+# only key names. Refuses to overwrite existing confs. Deleting .env needs --delete-env, which an
+# agent passes only after the user said yes in the conversation.
+migrate_env() {
+    local delete="" line key val dest dk
+    [[ "${1:-}" == --delete-env ]] && delete=1
+    [[ -f .env ]] || die "no .env at the repository root — nothing to migrate"
+    mkdir -p "$CONF_DIR"; chmod 700 "$CONF_DIR"
+
+    if [[ -z "$delete" ]]; then
+        local f
+        for f in staging production local; do
+            [[ -e "$CONF_DIR/$f.conf" ]] && die "$CONF_DIR/$f.conf already exists — move it away first (nothing was written)"
+        done
+        ( umask 077; : > "$CONF_DIR/staging.conf"; : > "$CONF_DIR/production.conf"; : > "$CONF_DIR/local.conf" )
+        chmod 600 "$CONF_DIR/staging.conf" "$CONF_DIR/production.conf" "$CONF_DIR/local.conf"
+        for f in staging production local; do
+            echo "# migrated from .env by bin/deploy migrate-env on $(date -u +%Y-%m-%d)" >> "$CONF_DIR/$f.conf"
+        done
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ "$line" =~ ^[[:space:]]*(#.*)?$ ]] && continue
+            [[ "$line" =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]] || continue
+            key="${BASH_REMATCH[1]}"; val="${BASH_REMATCH[2]}"
+            val="${val%%[[:space:]]#*}"; val="${val%"${val##*[![:space:]]}"}"
+            dest=""; dk=""
+            case "$key" in
+                STAGING_*|PRODUCTION_*)
+                    dest="$(printf '%s' "${key%%_*}" | tr 'A-Z' 'a-z')"; dk="${key#*_}"
+                    case "$dk" in
+                        SSH_KEY) dk=DEPLOY_KEY
+                                 [[ "$val" == default || -z "$val" ]] && { echo "  dropped  $key (default keys → run bin/deploy key-setup $dest)"; continue; } ;;
+                        URL|TRANSPORT|HOST|PORT|USER|ROOT) dk="DEPLOY_$dk" ;;
+                        SFTP_PASSWORD) echo "  dropped  $key (passwords are not supported: SSH key only)"; continue ;;
+                        *) echo "  dropped  $key (unknown)"; continue ;;
+                    esac ;;
+                LOCAL_URL|LOCAL_WP_CMD|LOCAL_COMPOSER_CMD|BACKUP_KEEP) dest=local; dk="$key" ;;
+                LOCAL_DB_*) echo "  dropped  $key (read from the local wp-config.php)"; continue ;;
+                PROJECT_SLUG) [[ "$val" == "$PROJECT_SLUG" ]] || echo "  check    PROJECT_SLUG differs from bin/deploy — set it at the top of bin/deploy"; continue ;;
+                THEME_DIR) [[ "$val" == "$THEME_DIR" ]] || echo "  check    THEME_DIR differs from wp-content/themes/\$THEME_SLUG — set THEME_SLUG in bin/deploy"; continue ;;
+                MU_PLUGINS_DIR|LOCAL_WP_PATH) echo "  dropped  $key (fixed or unused)"; continue ;;
+                *) echo "  dropped  $key (unknown)"; continue ;;
+            esac
+            printf '%s=%s\n' "$dk" "$val" >> "$CONF_DIR/$dest.conf"
+            echo "  moved    $key → $dest.conf:$dk"
+        done < .env
+        chmod 600 "$CONF_DIR"/*.conf
+        if git log --all --oneline -- .env 2>/dev/null | grep -q .; then
+            warn ".env appears in git history — treat every secret it ever held as exposed and rotate it"
+        fi
+        echo
+        echo "migrate-env: confs written to $CONF_DIR (700/600). Run: bin/deploy check-env"
+        echo "Ask the user to confirm, then delete the old file with: bin/deploy migrate-env --delete-env"
+        return 0
+    fi
+
+    # --delete-env: only once the three confs exist with the right permissions.
+    check_conf_dir
+    local f
+    for f in staging production local; do check_conf_file "$CONF_DIR/$f.conf"; done
+    rm -f .env || die "could not delete .env"
+    [[ ! -e .env ]] || die ".env still present"
+    echo "migrate-env: .env deleted. Config now lives only in $CONF_DIR"
+}
+
+# clone_from_prod — staging := copy of the production database. The direction is fixed by the name
+# and the code: there is no reverse. Refuses when the two confs point at the same URL or root.
+clone_from_prod() {
+    local confirm="" a prod_url prod_host prod_root prod_dump esc_p esc_s
+    for a in "$@"; do
+        case "$a" in --confirm-clone=*) confirm="${a#*=}" ;; *) die "unknown option '$a'" ;; esac
+    done
+    [[ "$confirm" == "$PROJECT_SLUG" ]] \
+        || die "clone-from-prod overwrites the staging database: confirm with the user, then pass --confirm-clone=$PROJECT_SLUG"
+
+    select_env production
+    [[ "$TRANSPORT" == ssh ]] || die "clone-from-prod needs the ssh transport on production"
+    prod_url="$URL"; prod_host="$HOST"; prod_root="$RROOT"
+    mkdir -p "$DUMP_DIR"; chmod 700 "$DUMP_DIR"
+    prod_dump="$DUMP_DIR/production-$(date +%Y%m%d-%H%M%S).sql.gz"
+    info "1/5 export production database"
+    remote_wp db export - | gzip -9 > "$prod_dump" || die "production export failed"
+    [[ "$(gzip -cd "$prod_dump" | head -c 64 | wc -c | tr -d ' ')" -gt 0 ]] || die "production dump is empty"
+
+    select_env staging                   # clean slate: nothing carried over from production.conf
+    [[ "$TRANSPORT" == ssh ]] || die "clone-from-prod needs the ssh transport on staging"
+    [[ "$URL" != "$prod_url" ]] || die "staging and production have the same DEPLOY_URL — check the two confs"
+    [[ "$HOST:$RROOT" != "$prod_host:$prod_root" ]] || die "staging and production point at the same host and root"
+
+    info "2/5 backup staging"
+    backup_remote
+    info "3/5 import into staging"
+    gzip -cd "$prod_dump" | remote_wp db import -
+    info "4/5 search-replace $prod_url → $URL"
+    remote_wp search-replace "$prod_url" "$URL" --all-tables-with-prefix --skip-columns=guid --precise --report-changed-only
+    esc_p="${prod_url//\//\\\/}"; esc_s="${URL//\//\\\/}"
+    remote_wp search-replace "$esc_p" "$esc_s" --all-tables-with-prefix --skip-columns=guid --precise --report-changed-only
+    info "5/5 flush and protect"
+    remote_wp option update blog_public 0
+    remote_wp cache flush || true
+    remote_wp rewrite flush || true
+    remote_wp acorn optimize || warn "wp acorn optimize failed — run it manually"
+    log "clone-from-prod $(basename "$prod_dump")"
+    info "staging is now a copy of production ($URL). Rollback: bin/deploy staging restore $LAST_BACKUP --confirm-restore=$PROJECT_SLUG"
+}
+
+# refuse_early <env> <cmd> <args…> — refusals that need no config and no network, checked before
+# anything is loaded, so selftest can prove them offline.
+refuse_early() {
+    local env="$1" cmd="$2" a; shift 2
+    if [[ "$env" == production && "$cmd" == bootstrap ]]; then
+        for a in "$@"; do
+            [[ "$a" == --with-db ]] && die "bootstrap --with-db does not exist for production: the production database is never overwritten"
+        done
+    fi
+    if [[ "$env" == production && "$cmd" == restore ]]; then
+        for a in "$@"; do
+            [[ "$a" == --confirm-production=* ]] && return 0
+        done
+        [[ " $* " == *" --dry-run "* ]] || die "production restore requires --confirm-production=$PROJECT_SLUG too"
+    fi
+    return 0
+}
+
+# ---------------------------------------------------------------------------------------------
+[[ $# -ge 1 ]] || { sed -n '3,33p' "$0"; exit 1; }
 case "$1" in
-    selftest) selftest; exit 0 ;;
-    -h|--help|help) sed -n '3,18p' "$0"; exit 0 ;;
+    selftest)        selftest; exit 0 ;;
+    -h|--help|help)  sed -n '3,48p' "$0"; exit 0 ;;
+    init)            init_conf; exit 0 ;;
+    key-setup)       shift; key_setup "$@"; exit 0 ;;
+    clone-from-prod) shift
+                     [[ " $* " == *" --confirm-clone=$PROJECT_SLUG "* ]] \
+                         || die "clone-from-prod overwrites the staging database: confirm with the user, then pass --confirm-clone=$PROJECT_SLUG"
+                     [[ "$PROJECT_SLUG" != example-project ]] || die "set PROJECT_SLUG at the top of bin/deploy first"
+                     load_local_conf; clone_from_prod "$@"; exit 0 ;;
+    migrate-env)     shift; migrate_env "$@"; exit 0 ;;
+    check-env)       check_env; exit 0 ;;
+    doctor|push|bootstrap|wp|eval-file|backup|db-backup|backups|restore)
+                     die "missing environment: bin/deploy <staging|production> $1 — there is no default" ;;
+    staging|production) ;;
+    *)               die "unknown environment '$1' (staging | production)" ;;
 esac
 
-load_env
-if [[ "$1" == check-env ]]; then check_env; exit 0; fi
-for k in PROJECT_SLUG THEME_DIR; do
-    is_placeholder "${!k}" && die "$k in .env is still a placeholder — set the real value (bin/deploy check-env)"
-done
-select_env "$1"; shift
+env_arg="$1"; shift
 cmd="${1:-}"; shift || true
+[[ -n "$cmd" ]] || die "missing command: bin/deploy $env_arg <command> (bin/deploy help)"
+refuse_early "$env_arg" "$cmd" "$@"
+[[ "$PROJECT_SLUG" != example-project ]] || die "set PROJECT_SLUG at the top of bin/deploy first (it is still example-project)"
+load_local_conf
+select_env "$env_arg"
 case "$cmd" in
     doctor)    doctor ;;
     push)      push "$@" ;;

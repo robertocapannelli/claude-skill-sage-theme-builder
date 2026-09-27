@@ -14,8 +14,9 @@ silently: editor/front-end parity, content migrations, i18n, schema.org, tests, 
 
 ## What it does
 
-- **Project kickoff** — asks for the git remote and branch, sets up a gitignored `.env` describing
-  local, staging and production, installs the deploy script and guard rails, brands the login screen,
+- **Project kickoff** — asks for the git remote and branch, sets up the deploy config **outside the
+  repository** (`~/.config/<project-slug>/`, one file per environment, permissions enforced) with a
+  dedicated SSH key per environment, installs the deploy script and guard rails, brands the login screen,
   and (only on sites built from scratch) creates the first admin with a username and email you choose.
 - **Design → theme** — design tokens in Tailwind v4 `@theme`, generated `theme.json`, semantic Blade
   components, archives and singles as templates, accessible navigation.
@@ -30,7 +31,7 @@ silently: editor/front-end parity, content migrations, i18n, schema.org, tests, 
 - **Migrations** — renames of blocks, CPTs, options and meta treated as idempotent DB migrations.
 - **Deploys** — one audited door, `bin/deploy`: every push builds first; staging is routine,
   production runs only on explicit request, after a backup, over SSH (rsync) or SFTP (lftp) —
-  always authenticated with the SSH keys already on your computer, never a password.
+  always authenticated with a dedicated SSH key per project and environment, never a password.
 
 ## Principles it enforces
 
@@ -39,7 +40,8 @@ silently: editor/front-end parity, content migrations, i18n, schema.org, tests, 
 3. Blocks are named after their structure (`split-stats`), never after the content they first showed.
 4. No git commit, push or tag without an explicit request.
 5. No production deploy without an explicit request.
-6. Secrets never pass through the conversation: they are written as `CHANGE_ME` and filled in by hand.
+6. The repository holds no config and no secret: hosts, paths, keys, backups and dumps live in
+   `~/.config/<project-slug>/`, filled in by hand, never read by the agent.
 
 ## Stack
 
@@ -81,7 +83,7 @@ Italian phrasings work too ("fammi un blocco Gutenberg", "deploy in staging").
 ```
 SKILL.md            entry point: operating rules, workflow, traps, reference map
 references/         topic guides Claude loads on demand
-assets/             files copied into projects: bin/deploy, .env.example, .claude/ settings + hook
+assets/             files copied into projects: bin/deploy, conf templates, .claude/ settings + hook
 evals/evals.json    behaviour test cases for the skill
 scripts/            maintainer tooling: public-content audit, packaging
 CHANGELOG.md        release notes

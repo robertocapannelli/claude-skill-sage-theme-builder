@@ -44,7 +44,7 @@ credentials, screenshots of real sites. Examples use `acme`, `mytheme`, `example
 ```
 SKILL.md            orchestrator, frontmatter carries metadata.version
 references/         loaded on demand by the agent
-assets/             files the agent copies into projects (bin/deploy, .env.example, .claude/…)
+assets/             files the agent copies into projects (bin/deploy, conf templates, .claude/…)
 evals/evals.json    behaviour cases (not packaged)
 scripts/            maintainer tooling (not packaged)
 CHANGELOG.md        one entry per version (not packaged)

@@ -2,6 +2,37 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 3.0.0 — 2026-09-27
+
+**Breaking: the deploy config leaves the repository.**
+
+- Config lives in `~/.config/<project-slug>/` — `staging.conf`, `production.conf`, `local.conf` — with
+  folder 700 and files 600 enforced by `bin/deploy`. The repository keeps only `PROJECT_SLUG` (top of
+  `bin/deploy`) and two templates with fictitious values (`bin/deploy.conf.example`,
+  `bin/deploy.local.conf.example`). `assets/env.example` and the repo-root `.env` are gone.
+- Backups, dumps and the deploy log move to `~/.config/<slug>/` (a dump holds personal data and
+  password hashes). The local DB export is moved there the moment it is written.
+- Per-environment keys `DEPLOY_*` (prefixed so `USER`/`HOST` never clobber the shell's).
+- Confs are still parsed, never sourced, with a per-file key whitelist; every env conf load starts
+  from a clean slate. `selftest` adds `conf_isolation`, a permission case, `require_local_url` cases
+  (LOCAL_URL must be https) and offline refusal cases.
+- No password anywhere: `LOCAL_DB_*` and `*_SFTP_PASSWORD` removed; DB credentials come from each
+  `wp-config.php`. The packaging check rejects a template with a password/secret key.
+- Dedicated SSH key per project and environment (`bin/deploy key-setup <env> [--passphrase]`),
+  always `IdentitiesOnly=yes`; `DEPLOY_KEY=default` (agent keys) is refused — a personal key that
+  opens other servers could otherwise be the one that authenticates.
+- Environment is always the first argument, no default; `bin/deploy push` without it is refused.
+  Production refusals in code: `bootstrap --with-db`, `restore` without `--confirm-production`.
+- New commands: `init`, `key-setup`, `migrate-env [--delete-env]` (moves a legacy `.env`, prints key
+  names only, warns if `.env` is in git history), `clone-from-prod --confirm-clone=<slug>` (staging :=
+  production's DB, one way, refuses identical URL or host+root).
+- `bootstrap` never overwrites a plugin already on the server (a stale local copy would downgrade it).
+- Guard: `deny` on Read/Edit/Write of `~/.config/<slug>/**` and Read of `~/.ssh/**`; the hook blocks any
+  command naming the config folder, the dedicated keys, a `.env` or a deploy host, and no longer lets a
+  chained `bin/deploy …; cat …` through. `ask` rules added for `clone-from-prod` and `migrate-env`.
+- Docs: `remote-environments.md` and `project-kickoff.md` rewritten for the new model; evals updated
+  (kickoff "configura staging e produzione", "nessun segreto nel repo").
+
 ## 2.6.1 — 2026-09-27
 
 - `remote-environments.md`: `eval-file` listed among the commands; new section *Adding content instead

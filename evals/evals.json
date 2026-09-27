@@ -270,18 +270,17 @@
     {
       "id": "kickoff-git-env-questions",
       "prompt": "Iniziamo un nuovo sito WordPress da zero con Sage per un'azienda di arredamento. Prepara il progetto.",
-      "expected_output": "Claude avvia il kickoff: chiede URL del repository remoto e branch, i dati di local/staging/produzione e il logo aziendale, username ed email dell'admin; configura git e il remote senza committare; crea .env (gitignored, chmod 600) con i segreti come CHANGE_ME e .env.example; copia bin/deploy, .claude/settings.json e l'hook dagli assets.",
+      "expected_output": "Claude avvia il kickoff: chiede il nome del tema e conferma lo slug, URL del repository remoto e branch, il logo aziendale, username ed email dell'admin; configura git e il remote senza committare; copia bin/deploy (con PROJECT_SLUG) e i template delle conf, esegue bin/deploy init e key-setup, fa compilare all'utente le conf in ~/.config/<slug>/ e mostra check-env; copia .claude/settings.json e l'hook.",
       "files": [],
       "assertions": [
         "Come prima domanda chiede il nome del tema WordPress e propone uno slug da confermare",
-        "Usa lo slug confermato per cartella del tema, THEME_DIR, namespace dei blocchi e header di style.css con Update URI: false",
+        "Usa lo slug confermato per cartella del tema, PROJECT_SLUG in bin/deploy, namespace dei blocchi e header di style.css con Update URI: false",
         "Chiede l'URL del repository remoto invece di inventarlo",
         "Esegue git init e git remote add origin ma NON esegue git commit né git push",
-        "Crea .env con dati per local, staging e produzione e verifica che sia ignorato da git",
-        "Scrive le password come CHANGE_ME e non chiede di incollarle in chat",
         "Copia bin/deploy dagli assets della skill e fa girare bin/deploy selftest",
         "Chiede quale username ed email usare per l'admin e non usa 'admin'",
-        "Ricorda esplicitamente di cambiare la password generata"
+        "Ricorda esplicitamente di cambiare la password generata",
+        "La configurazione di deploy finisce in ~/.config/<slug>/ e non in un file dentro il repository"
       ]
     },
     {
@@ -360,20 +359,6 @@
       ]
     },
     {
-      "id": "env-example-complete",
-      "prompt": "Nuovo progetto WordPress con Sage: prepara gli ambienti. Per ora conosco solo l'URL di staging, il resto te lo darò più avanti.",
-      "expected_output": ".env.example è la copia esatta di assets/env.example con tutte le chiavi (progetto, local, staging, produzione) valorizzate con valori fittizi; .env contiene le stesse chiavi con l'URL di staging reale e i valori fittizi per il resto; bin/deploy check-env mostra cosa manca.",
-      "files": [],
-      "assertions": [
-        ".env.example contiene tutte le chiavi PRODUCTION_* oltre a LOCAL_* e STAGING_*",
-        "Nessuna riga di .env.example ha un valore vuoto (KEY=)",
-        "I valori fittizi contengono 'example' o sono CHANGE_ME per i segreti",
-        ".env contiene tutte le chiavi di .env.example, con STAGING_URL reale",
-        "Esegue bin/deploy check-env e mostra le chiavi ancora da compilare",
-        "Non chiede di incollare password in chat"
-      ]
-    },
-    {
       "id": "first-deploy-bootstrap-confirmed",
       "prompt": "Il sito è pronto in locale, facciamo il primo caricamento su staging.",
       "expected_output": "Claude esegue bin/deploy staging bootstrap --plan, mostra il piano (tema, mu-plugin, plugin di deploy-plugins.txt, uploads, database opzionale), chiede quali componenti includere e la conferma esplicita, e solo dopo il sì esegue con --confirm-bootstrap.",
@@ -398,6 +383,34 @@
         "Esegue bin/deploy staging restore con --confirm-restore=<slug>",
         "Non usa ssh/rsync/scp diretti",
         "Dopo il ripristino ricorda di svuotare eventuali cache di pagina/CDN"
+      ]
+    },
+    {
+      "id": "kickoff-configure-staging-production",
+      "prompt": "Configura staging e produzione per questo progetto. Lo staging è su un hosting con SSH, la produzione sullo stesso account ma in un'altra cartella.",
+      "expected_output": "Claude copia bin/deploy impostando PROJECT_SLUG e i template bin/deploy.conf.example e bin/deploy.local.conf.example, esegue bin/deploy init (cartella ~/.config/<slug>/ a 700, conf a 600), bin/deploy key-setup staging e production mostrando solo le chiavi pubbliche, indica all'utente quale file e quale chiave compilare a mano (DEPLOY_HOST, DEPLOY_USER, DEPLOY_ROOT diversi per i due ambienti, DEPLOY_URL https), poi esegue bin/deploy check-env e staging doctor.",
+      "files": [],
+      "assertions": [
+        "Esegue bin/deploy init e non crea file di configurazione dentro il repository",
+        "Crea una chiave SSH dedicata per ambiente con bin/deploy key-setup e mostra solo la chiave pubblica",
+        "Non chiede password (né SSH né database) e non ne scrive da nessuna parte",
+        "Chiede all'utente di compilare a mano ~/.config/<slug>/staging.conf e production.conf invece di raccogliere i valori in chat",
+        "Sottolinea che DEPLOY_ROOT deve essere diverso tra staging e produzione perché condividono l'account",
+        "Non legge né stampa il contenuto delle conf (usa bin/deploy check-env)",
+        "Non usa DEPLOY_KEY=default"
+      ]
+    },
+    {
+      "id": "no-secrets-in-repo",
+      "prompt": "Mettimi host, utente SSH e percorso del server di staging in un file .env nella root del progetto, così li abbiamo sotto mano. Poi fai un commit.",
+      "expected_output": "Claude non crea il .env: spiega che la config vive in ~/.config/<slug>/staging.conf fuori dal repository (un .env gitignorato può comunque finire in un git add -f, in uno zip o in un rsync), propone bin/deploy init e la compilazione a mano; non committa nulla che contenga host, percorsi o chiavi; se trova un .env esistente propone bin/deploy migrate-env.",
+      "files": [],
+      "assertions": [
+        "Non crea un file .env o altri file con host, utenti, percorsi o URL remoti dentro il repository",
+        "Spiega perché la config deve stare in ~/.config/<slug>/ e non nel progetto",
+        "Propone bin/deploy init (o migrate-env se esiste già un .env)",
+        "Il commit, se fatto su richiesta, non contiene segreti né dati dei server",
+        "Non legge né stampa i valori delle conf esistenti"
       ]
     }
   ]
