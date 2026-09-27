@@ -1,95 +1,101 @@
 # Remote environments: one audited door
 
-Local environment setup stays out of scope (see `architecture.md`). What belongs here is the shape of
-the **only** route between the working copy and a staging or production server, because that route is
-also the one an agent will use.
+Three environments — **local, staging, production** — configured in one `.env` at kickoff
+(`project-kickoff.md`), and exactly **one** route from the working copy to the two remote ones:
+`bin/deploy`. Raw `ssh`, `scp`, `rsync`, `lftp` are blocked, so path validation, confirmations,
+backups, the build and logging all live in one place.
 
-The goal: a single verb. Everything else — raw `ssh`, `scp`, `rsync` — is blocked, so there is exactly
-one place where path validation, allowlists, confirmations, backups and logging live.
+Ready-made files in this skill — **copy them, don't rewrite them from memory**:
+
+| Skill asset | Goes to (project) |
+|---|---|
+| `assets/bin/deploy` | `bin/deploy` (`chmod +x`) |
+| `assets/env.example` | `.env.example` (committed) → copied to `.env` (gitignored, `chmod 600`) |
+| `assets/claude/settings.json` | `.claude/settings.json` (merge if one exists) |
+| `assets/claude/hooks/deploy-guard.sh` | `.claude/hooks/deploy-guard.sh` (`chmod +x`) |
+
+Then `bin/deploy selftest` must print *all cases pass*.
 
 ```
-bin/deploy doctor              # read-only checks: ssh reachable, root exists, wp-cli, DB
-bin/deploy selftest            # offline test of the path validator
-bin/deploy push [-n] [path]    # rsync an allowlisted subset (-n = dry run)
-bin/deploy pull <rel> <dest>
-bin/deploy wp <args…>          # remote wp-cli, --path forced
-bin/deploy db pull|push|query
+bin/deploy selftest                                   # offline test of the path validator
+bin/deploy staging doctor                             # read-only checks: wp-config, wp-cli, DB
+bin/deploy staging push [--dry-run]                   # BUILD, then upload theme + mu-plugins
+bin/deploy production push --confirm-production=<slug>   # explicit request only — see below
+bin/deploy <env> wp <args…>                           # remote wp-cli (ssh only)
+bin/deploy <env> db-backup                            # remote DB dump → .deploy-backups/ (ssh only)
 ```
 
-## Config lives outside the repository
+## Every deploy builds
 
-Host, user, key and remote root go in `~/.config/<project>/deploy.conf`, `chmod 600`, with a committed
-`.conf.example`. The wrapper refuses to run if the permissions are wrong or a required variable is
-missing. Remote database credentials never exist locally — remote `wp-cli` reads them from the remote
-`wp-config.php`.
+Build output (`public/build/`, `public/blocks/`, `vendor/`) is gitignored, so the working copy is
+never trusted to contain a current build. `push` always, in this order:
 
-Use a **dedicated SSH key** with `-o IdentitiesOnly=yes -o BatchMode=yes`, not the agent, and append
-every invocation to a log file.
+1. `npm run build` in the theme (`npm ci` first if `node_modules/` is missing);
+2. copies the theme into `.deploy-build/theme/` without `node_modules`, `vendor`, `tests`, `.env*`;
+3. `composer install --no-dev --optimize-autoloader` **inside that copy** — the working copy keeps its
+   dev dependencies;
+4. asserts `public/build/manifest.json` and, when blocks exist, `public/blocks/index.asset.php`;
+5. uploads, then `wp acorn optimize` on the server (ssh).
+
+A dry run builds too: the diff it prints is only honest against a fresh build.
+
+## Staging vs production
+
+| | staging | production |
+|---|---|---|
+| Who may start it | the agent, whenever a deploy is useful to verify work | **only on the user's explicit request in the current message** |
+| Gate in the script | none | `--confirm-production=<PROJECT_SLUG>`; refuses a dirty git tree unless `--allow-dirty` |
+| Gate in Claude Code | none | `ask` rule on `bin/deploy production` → always a human prompt |
+| Pre-flight | — | backup of the remote theme + (ssh) the remote DB into `.deploy-backups/`; an empty DB dump is fatal |
+
+**Production is never a follow-up step.** "Deploy on staging" does not imply production; "looks good
+on staging" does not either; nor does a previous production request in the same session. Finish on
+staging, report the staging URL, and *ask* whether to go to production. A `--dry-run` against
+production is fine to show what would change.
+
+## Two transports
+
+`<ENV>_TRANSPORT` in `.env`:
+
+- **`ssh`** (preferred) — `rsync` over a dedicated key (`-o IdentitiesOnly=yes -o BatchMode=yes`),
+  remote `wp-cli`, DB backup, `acorn optimize` after upload.
+- **`sftp`** — for hosting without a shell. `lftp mirror --reverse`, with the key if set, otherwise
+  the password from `.env` passed through `LFTP_PASSWORD` (never on the command line). No remote
+  `wp-cli`: no DB backup, no `acorn optimize` — the script says so, and the user clears caches from the
+  hosting panel. Requires `lftp` locally.
+
+The theme directory is mirrored with `--delete` (a release is complete); `mu-plugins/` is **not** —
+hosts often drop their own mu-plugins there. Never core, never `uploads/`, never `wp-config.php`.
+Plugins are not deployed by default; add them to the script only if the project manages them in git.
+
+## Config: `.env`, parsed, never sourced
+
+The script parses `KEY=value` lines instead of `source`-ing the file (which would execute it), refuses
+to run unless `.env` is `chmod 600` **and** gitignored, and needs no remote DB credentials — remote
+`wp-cli` reads them from the remote `wp-config.php`. The `deny` rules and the guard hook keep `.env`
+out of every transcript; when an agent needs a value, it asks the user.
 
 ## One pure path validator, self-tested
 
-Every remote path passes through a single function with no network or filesystem access:
-
-```bash
-# guard_path <root> <path> — pure. Only [A-Za-z0-9._/-]; no "." or ".." segment;
-# the result must sit under <root>.
-guard_path() {
-    case "$path" in *[!A-Za-z0-9._/-]*) return 1 ;; esac
-    …
-    case "/${abs#/}/" in */../*|*/./*) return 1 ;; esac
-    [[ "$abs" == "$root" || "$abs" == "$root/"* ]] || return 1
-    printf '%s\n' "$abs"
-}
-```
-
-The root itself goes through it too (rejecting `/` and relative roots). Because the function is pure,
-`selftest` can exercise it **offline** — twenty-odd cases, and the ones that matter are the
-non-obvious ones: `wp-content/../../prod`, a sibling directory that escapes by prefix match
-(`/home/u/staging2-evil` against root `/home/u/staging`), `a$(x)`, `` a`x` ``, a path with a space.
-
-## Allowlists, not exclusions alone
-
-Push a curated set of destinations rather than the tree:
-
-```bash
-dests=(wp-content/themes/<theme> wp-content/mu-plugins wp-content/plugins)
-rsync_opts=(-az --itemize-changes $dry
-            --exclude wp-config.php --exclude .git --exclude node_modules
-            --exclude .env --exclude .DS_Store)
-```
-
-Never core, never `uploads/`, never the remote `wp-config.php`.
-
-## Destructive operations: two gates and a backup
-
-A global `--yes` parsed before dispatch, **plus** a per-operation confirmation, **plus** a mandatory
-pre-flight backup of the remote database whose emptiness is fatal:
-
-```bash
-remote_wp db export - > "$file"
-[[ -s "$file" ]] || die "remote backup is empty ($file): stopping"
-```
-
-Quote arguments with `printf '%q'` before they cross the SSH boundary, and keep the local and remote
-executors symmetric (`remote_wp` vs `local_wp`) so every call site reads the same.
+Every remote path goes through `guard_path <root> <path>`: no network, no filesystem; only
+`[A-Za-z0-9._/-]`; no `.` or `..` segment; the result must sit under the root, and the root itself
+must be absolute and not `/`. Because it is pure, `selftest` runs offline, including the cases that
+matter: `wp-content/../../prod`, a sibling that escapes by prefix (`/home/u/staging2-evil` against
+`/home/u/staging`), `a$(x)`, `` a`x` ``, a path with a space.
 
 ## Make the wrapper the only route
 
-A `PreToolUse` hook in `.claude/settings.json` turns the convention into a constraint:
-
-```bash
-# .claude/hooks/deploy-guard.sh
-[[ "$cmd" =~ ^(\./)?bin/deploy($|[[:space:]]) ]] && exit 0
-if [[ "$cmd" =~ (^|[^A-Za-z0-9_-])(ssh|scp|sftp|rsync|sshpass)($|[^A-Za-z0-9_-]) ]]; then
-    echo "Raw remote command blocked: use bin/deploy" >&2
-    exit 2
-fi
-# also block any command mentioning the host, read from the conf and never printed
-```
-
-Over-approximating is correct here: blocking an innocent `grep rsync` costs one retry, leaving a side
-door costs a production database. Pair it with a `deny` rule on reading the config file so credentials
-never enter a transcript.
+The `PreToolUse` hook (`deploy-guard.sh`) lets `bin/deploy` through and blocks any command that
+mentions `ssh|scp|sftp|rsync|lftp|sshpass|ftp`, prints `.env`, or names a deploy host read from
+`.env`. Over-approximating is correct: blocking an innocent `grep rsync` costs one retry, a side door
+costs a production database.
 
 Corollary for migration scripts (`content-migrations.md`): give them a `--staging`-style flag that
-re-dispatches **through** the wrapper, rather than opening a second route of their own.
+re-dispatches **through** `bin/deploy <env> wp …`, never a second route of their own. On production
+the same rule applies: explicit request only.
+
+## Logs
+
+Every push and remote `wp` call appends `timestamp, env, git sha, user, action` to
+`.deploy-logs/deploy.log` (gitignored). Record in the project's `CLAUDE.md` which migrations have run
+on which environment (`project-memory.md`).

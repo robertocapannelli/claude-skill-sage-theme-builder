@@ -213,6 +213,29 @@ returns null-ish (so no stale markup can land in `post_content`). Between them t
 silent failures of this architecture: a block never imported into the entry, and an `edit()` registered
 under a name that does not match its `block.json`.
 
+**Attribute ↔ control parity** — the test behind "everything visible is editable"
+(`native-blocks.md`). Static, no rendering needed:
+
+```js
+// tests/js/attribute-controls.test.js
+const fs = require('fs');
+const path = require('path');
+const blocksDir = path.resolve(__dirname, '../../resources/blocks');
+
+describe.each(fs.readdirSync(blocksDir).filter((d) => fs.existsSync(path.join(blocksDir, d, 'block.json'))))(
+    'block %s', (name) => {
+        const meta = require(path.join(blocksDir, name, 'block.json'));
+        const edit = fs.readFileSync(path.resolve(__dirname, `../../resources/js/blocks/${name}/index.js`), 'utf8');
+        test.each(Object.keys(meta.attributes || {}))('attribute %s has a control', (attr) => {
+            expect(edit).toMatch(new RegExp(`\\b${attr}\\b`));
+        });
+    },
+);
+```
+
+It cannot prove the control is *good*, only that it exists — the element-by-element walk of the front
+end in `native-blocks.md` covers the rest.
+
 ## Jest with wp-scripts
 
 wp-scripts externalises every `@wordpress/*` import to the `wp.*` globals, so those packages are never

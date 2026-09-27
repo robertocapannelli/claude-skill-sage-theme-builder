@@ -5,3 +5,7 @@
 **/benchmark.json
 **/timing.json
 .DS_Store
+
+# maintainer-only
+dist/
+.audit-denylist

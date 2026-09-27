@@ -183,9 +183,10 @@ does not exist yet, so chrome never renders a broken link on a fresh install.
 - Don't put `register_post_type`, `register_taxonomy` or API calls in `setup.php`/`functions.php`.
 - Don't ship jQuery or heavy front-end JS for something CSS can do.
 
-## Environment is out of scope
+## Environments: tooling out of scope, description in scope
 
-This skill assumes a working WordPress install with `wp` available. It does not manage the local dev
-environment — Devilbox/DDEV/Local/Valet, containers, hosts. That is infrastructure, deliberately kept
-out so the skill stays stack-agnostic. Remote environments are different: see
-`remote-environments.md` for the one door that should exist.
+This skill does not choose or install the local dev tooling — Devilbox/DDEV/Local/Valet, containers,
+hosts. That stays stack-agnostic. What it does own, from the kickoff, is the **description** of all
+three environments: one `.env` with local, staging and production data (how `wp` is invoked locally,
+URLs, hosts, roots), and `bin/deploy` as the one door to the remote ones. See `project-kickoff.md`
+and `remote-environments.md`.

@@ -5,10 +5,15 @@ description: >-
   Tailwind), even when "Sage" is not named: scaffolding a theme, porting a Figma file or HTML mockup
   to WordPress, design tokens and theme.json, native Gutenberg blocks, block previews that don't
   match the front end, post meta and settings without ACF, schema.org JSON-LD, theme or block tests,
-  renaming a block/CPT/option in an existing site, or deciding what belongs in the theme versus a
-  mu-plugin. Also on Italian phrasings ("tema Sage", "fammi un blocco Gutenberg", "l'anteprima
-  nell'editor non torna", "rinomina il blocco"). Runs against a real project on disk.
-allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*)
+  renaming a block/CPT/option in an existing site, deciding what belongs in the theme versus a
+  mu-plugin, starting a new WordPress project (git remote, .env for local/staging/production, first
+  admin user), deploying to staging or production, or branding the wp-login screen. Also on Italian
+  phrasings ("tema Sage", "nuovo sito WordPress", "fammi un blocco Gutenberg", "l'anteprima
+  nell'editor non torna", "rinomina il blocco", "deploy in staging", "metti online"). Runs against a
+  real project on disk.
+allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
+metadata:
+  version: "2.0.0"
 ---
 
 # Sage Theme Builder
@@ -64,50 +69,77 @@ architecture, different build commands.
 7. **Lightweight by construction.** Server-rendered front end, no React shipped to visitors,
    self-hosted fonts, only the CSS/JS actually used. Performance is a design constraint, not a later
    pass.
+8. **Everything visible on the front end is editable from the block's controls.** Every text, image,
+   link, icon and repeated item a visitor sees maps to an attribute with a control; no visible literal
+   in `render.php`. See `references/native-blocks.md` → *Everything visible is editable*.
+9. **Git is configured on day one; commits happen only on explicit request.** Remote and branch are
+   asked, never guessed. Never `git commit`, `push`, `tag` or amend unless the user asks for it in the
+   current request — propose the message and stop. See `references/project-kickoff.md`.
+10. **Deploys go through `bin/deploy`, always build first, and production is explicit-only.** Staging
+   is the agent's to use; production runs only when the user asks for it in the current message,
+   never as a follow-up to a staging deploy. See `references/remote-environments.md`.
+11. **Secrets never pass through the conversation.** `.env` holds local/staging/production config,
+   is gitignored and `chmod 600`; secrets are written as `CHANGE_ME` for the user to fill in.
+12. **Users are the owner's.** On a site built from scratch, ask which admin username (never `admin`)
+   and email to create, and remind the user to change the generated password. On an existing site,
+   never create or change users unless asked.
+13. **The login screen carries the company logo**, never the WordPress one
+   (`references/login-branding.md`).
 
 ## Workflow
 
 Work through these in order; skip ahead when the request is scoped to one part (e.g. "just make me a
-testimonial block" → Phase 0 check, then Phase 4).
+testimonial block" → Phase 1 check, then Phase 5).
 
-**0 — Recon.** Read `composer.json`, `package.json`, `vite.config.js`, `app/setup.php`,
+**0 — Kickoff** (new project; on an existing one, a gap check after recon — add what is missing,
+overwrite nothing). Ask for git remote and branch → `git init` + `origin`; ask for the environment data
+→ `.env` + `.env.example`; copy `bin/deploy`, `.claude/settings.json` and the guard hook from this
+skill's `assets/`; ask for the company logo; on a site built from scratch, ask for the admin username
+and email, install, remind to change the password. → `project-kickoff.md`
+
+**1 — Recon.** Read `composer.json`, `package.json`, `vite.config.js`, `app/setup.php`,
 `resources/css/app.css`: Sage version, bundler split, which optional plugins exist, whether a
 mu-plugin and a test suite already exist. With a Figma link, use the Figma MCP
 (`get_design_context`, `get_variable_defs`, `get_screenshot`) instead of asking for screenshots you
 can fetch yourself.
 
-**1 — Design tokens** into `@theme` in `resources/css/tokens.css`, with `theme(static)` and the
+**2 — Design tokens** into `@theme` in `resources/css/tokens.css`, with `theme(static)` and the
 `@source` lines. → `design-to-blade.md`
 
-**2 — Blade components** in `components/` and `partials/`; data from View Composers, never a query in
+**3 — Blade components** in `components/` and `partials/`; data from View Composers, never a query in
 a view.
 
-**3 — Templates & navigation.** Archives and singles as Blade (never blocks), a 404 in the site's
-voice, dynamic menus with an admin-only placeholder and an accessible offcanvas. →
-`templates.md`, `navigation.md`
+**4 — Templates, navigation & login.** Archives and singles as Blade (never blocks), a 404 in the site's
+voice, dynamic menus with an admin-only placeholder and an accessible offcanvas, the company logo on
+the login screen. → `templates.md`, `navigation.md`, `login-branding.md`
 
-**4 — Native blocks.** One folder per block, `save: () => null`, `<ServerSideRender>` as the canvas
-preview. → `native-blocks.md`
+**5 — Native blocks.** One folder per block, `save: () => null`, `<ServerSideRender>` as the canvas
+preview, a control for every visible element — walk the front end and name the control for each. →
+`native-blocks.md`
 
-**5 — Editor parity.** The canvas shows the front end, not a copy of it. → `block-editor-parity.md`
+**6 — Editor parity.** The canvas shows the front end, not a copy of it. → `block-editor-parity.md`
 
-**6 — Content model.** CPTs, taxonomies and meta in the mu-plugin; sidebar panels and a Settings API
+**7 — Content model.** CPTs, taxonomies and meta in the mu-plugin; sidebar panels and a Settings API
 page for editing. → `post-meta-and-settings.md`
 
-**7 — Schema.org & LLM readiness.** Full graph, block-level schema from `render.php`, optional
+**8 — Schema.org & LLM readiness.** Full graph, block-level schema from `render.php`, optional
 `llms.txt`. → `schema-seo.md`
 
-**8 — Tests.** Answer *"does this need a test?"* **explicitly** for every new function — the answer may
+**9 — Tests.** Answer *"does this need a test?"* **explicitly** for every new function — the answer may
 be no, but it may not be skipped. Yes when it has branches, sanitizes/validates/authorizes, produces
 output someone else parses, depends on varying state, or has broken once before. → `testing.md`
 
-**9 — Migrations & hand-off.** A rename — block, CPT, option, meta key — or a change to a block's
+**10 — Migrations & hand-off.** A rename — block, CPT, option, meta key — or a change to a block's
 attribute defaults is a database migration: idempotent script, `--dry-run`, run once per environment.
 Leave the project a `CLAUDE.md` with the commands, constraints and traps. →
 `content-migrations.md`, `project-memory.md`
 
-**10 — Build & verify.** `npm run build`, then `wp acorn optimize`. Editor loads clean, the front end
+**11 — Build & verify.** `npm run build`, then `wp acorn optimize`. Editor loads clean, the front end
 ships no block React, the JSON-LD validates, the checklist below passes.
+
+**12 — Deploy.** `bin/deploy staging push` (it builds first) and report the staging URL. Production
+only when the user asks for it explicitly: `bin/deploy production push --dry-run` to show the diff,
+then `--confirm-production=<slug>`. Commit only if asked. → `remote-environments.md`
 
 ## Traps that fail silently
 
@@ -125,12 +157,15 @@ Read this table first whenever something "doesn't show up but throws no error".
 | Fatal `TypeError` on a live page | arithmetic on an editor-supplied attribute in PHP 8 | `native-blocks.md` |
 | Layout collapses while images decode | an optimizer runs before core's `wp_filter_content_tags()` at priority 12 | `plugin-interop.md` |
 | A plugin's shortcode/tag disappears from the DB after a CLI script | the plugin guards its expansion with `!is_admin()`; WP-CLI is not admin | `plugin-interop.md` |
+| Staging shows old CSS/JS, or unstyled pages after a deploy | build output is gitignored and was not rebuilt — deploy by hand instead of `bin/deploy` | `remote-environments.md` |
+| An editor can't change a text or image on the page | hard-coded in `render.php`, or an attribute with no control | `native-blocks.md` |
 | A composer boolean is always true in `@if` | zero-arg methods arrive as a lazy `InvokableComponentVariable` — invoke it | `architecture.md` |
 
 ## Reference map
 
 | Read this | When |
 |---|---|
+| `references/project-kickoff.md` | New project: git + remote, `.env` for three environments, deploy guard rails, first admin, logo |
 | `references/architecture.md` | Project structure, bootstrap, two bundlers, theme↔mu-plugin boundary, composers, escaping |
 | `references/design-to-blade.md` | Figma/HTML → tokens → Blade; Tailwind v4 `@theme`, `theme(static)`, `@source`, self-hosted fonts |
 | `references/navigation.md` | WP menus, no-menu placeholder, offcanvas, normalized menu reader |
@@ -144,16 +179,26 @@ Read this table first whenever something "doesn't show up but throws no error".
 | `references/content-migrations.md` | Renames and format changes as DB migrations; the script recipe |
 | `references/i18n.md` | POT/PO/MO/JSON pipeline and its two silent traps |
 | `references/plugin-interop.md` | Optional-plugin degradation, `the_content` priorities, WP-CLI resave trap |
-| `references/remote-environments.md` | One audited door to staging/production |
+| `references/remote-environments.md` | `bin/deploy`: build-then-upload, staging vs production gates, ssh/sftp |
+| `references/login-branding.md` | Company logo on `wp-login.php` |
 | `references/project-memory.md` | Writing the project's CLAUDE.md as a deliverable |
 | `references/acf-usage.md` | Only for projects that already have ACF — including how to get off it |
 
+**Assets to copy, not rewrite:** `assets/bin/deploy`, `assets/env.example`,
+`assets/claude/settings.json`, `assets/claude/hooks/deploy-guard.sh`.
+
 ## Definition of done
 
+- [ ] Git initialised with the user's remote; no commit or push made without an explicit request.
+- [ ] `.env` (gitignored, `chmod 600`) covers local, staging, production; `.env.example` exists;
+      `bin/deploy selftest` passes; `.claude/settings.json` + guard hook installed.
+- [ ] New site only: admin username/email asked (not `admin`), password-change reminder given.
+- [ ] The login screen shows the company logo.
 - [ ] Design tokens live only in `@theme`; `theme.json` is generated, not hand-edited; `theme(static)`
       and `@source` are in place.
 - [ ] Design reproduced faithfully with semantic Blade; no logic in views.
 - [ ] Blocks are native, server-rendered, auto-registered, documented, named after structure.
+- [ ] Every visible element of every block has a control; the attribute↔control parity test passes.
 - [ ] The editor canvas shows the front-end stylesheet; `editor.css` contains only shims.
 - [ ] The content model (CPTs, meta, settings) lives in a mu-plugin, with `custom-fields` where meta is
       edited from the editor.
@@ -167,3 +212,4 @@ Read this table first whenever something "doesn't show up but throws no error".
 - [ ] Every rename or format change shipped with an idempotent migration script, and its per-environment
       status is recorded.
 - [ ] `npm run build` + `wp acorn optimize` succeed; editor and front end both clean.
+- [ ] Deployed to staging through `bin/deploy`; production untouched unless explicitly requested.
