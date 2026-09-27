@@ -1,0 +1,33 @@
+# .gitignore — copied verbatim from the sage-theme-builder skill (assets/gitignore).
+
+# ---- environment -----------------------------------------------------------------------------
+# .env holds real hosts and secrets: ALWAYS ignored, never tracked, never force-added.
+# .env.example holds every key with fictitious values: ALWAYS tracked.
+.env
+.env.*
+!.env.example
+
+# ---- dependencies and build output (rebuilt by every deploy) ----------------------------------
+node_modules/
+vendor/
+wp-content/themes/*/public/build/
+wp-content/themes/*/public/blocks/
+
+# ---- deploy tooling ----------------------------------------------------------------------------
+.deploy-build/
+.deploy-logs/
+.deploy-backups/
+
+# ---- WordPress: uploads and core (if the repository is the site root) --------------------------
+wp-content/uploads/
+/wp-admin/
+/wp-includes/
+/wp-*.php
+/index.php
+/license.txt
+/readme.html
+/xmlrpc.php
+wp-config.php
+
+# ---- OS / editors -------------------------------------------------------------------------------
+.DS_Store

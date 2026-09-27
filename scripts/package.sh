@@ -16,6 +16,12 @@ for k in $keys; do grep -qE "^$k=[^[:space:]#]" assets/env.example || bad="$bad 
 [[ -z "$bad" ]] || { echo "assets/env.example missing or empty:$bad" >&2; exit 1; }
 if grep -qE '^[A-Z_]+=([[:space:]]|#|$)' assets/env.example; then echo "assets/env.example has keys without a value" >&2; exit 1; fi
 
+# assets/gitignore must ignore .env and keep .env.example tracked
+g=$(mktemp -d); cp assets/gitignore "$g/.gitignore"; touch "$g/.env" "$g/.env.example" "$g/.env.local"
+( cd "$g" && git init -q && git check-ignore -q .env && git check-ignore -q .env.local && ! git check-ignore -q .env.example ) \
+    || { echo "assets/gitignore: .env must be ignored and .env.example tracked" >&2; exit 1; }
+rm -rf "$g"
+
 mkdir -p dist
 out="dist/sage-theme-builder-$version.zip"
 rm -f "$out"
