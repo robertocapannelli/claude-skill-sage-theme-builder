@@ -88,7 +88,7 @@ Then build `.env`: ask the user, in one round, for what they already know —
 |---|---|
 | `PROJECT_SLUG`, `THEME_DIR` | short project slug; theme folder name |
 | `LOCAL_*` | local URL, how `wp` is invoked locally (`wp`, `ddev wp`, `docker exec …`), DB name/user/host |
-| `STAGING_*`, `PRODUCTION_*` | URL; transport (`ssh` preferred, `sftp` if the host has no shell); host, port, user; path to the dedicated SSH key; absolute WordPress root on the server |
+| `STAGING_*`, `PRODUCTION_*` | URL; transport (`ssh` preferred, `sftp` if the host has no shell); host (or `~/.ssh/config` alias), port, user; absolute WordPress root on the server. **Never a password**: access is by the SSH keys already on the computer (`SSH_KEY=default`), or a specific key path if the user names one |
 
 — and write `.env` **once**, as a new file containing **every** key of `.env.example`: the answers
 replace the fictitious values, everything unanswered keeps its fictitious value, secrets stay

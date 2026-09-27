@@ -59,12 +59,29 @@ production is fine to show what would change.
 
 `<ENV>_TRANSPORT` in `.env`:
 
-- **`ssh`** (preferred) — `rsync` over a dedicated key (`-o IdentitiesOnly=yes -o BatchMode=yes`),
-  remote `wp-cli`, DB backup, `acorn optimize` after upload.
-- **`sftp`** — for hosting without a shell. `lftp mirror --reverse`, with the key if set, otherwise
-  the password from `.env` passed through `LFTP_PASSWORD` (never on the command line). No remote
-  `wp-cli`: no DB backup, no `acorn optimize` — the script says so, and the user clears caches from the
-  hosting panel. Requires `lftp` locally.
+- **`ssh`** (preferred) — `rsync` over SSH, remote `wp-cli`, DB backup, `acorn optimize` after upload.
+- **`sftp`** — for hosting without a shell: `lftp mirror --reverse` over the same SSH connection. No
+  remote `wp-cli`: no DB backup, no `acorn optimize` — the script says so, and the user clears caches
+  from the hosting panel. Requires `lftp` locally.
+
+## Authentication: SSH keys on this computer, never a password
+
+Both transports authenticate **only with SSH keys**. There is no remote password anywhere — not in
+`.env`, not in a prompt, not in the conversation.
+
+- `<ENV>_SSH_KEY=default` (the default) uses what the computer already has: the keys loaded in
+  `ssh-agent` (on macOS, the Keychain via `ssh-add --apple-use-keychain`), `~/.ssh/config`, and the
+  standard `~/.ssh/id_*`. `<ENV>_HOST` may be a `Host` alias from `~/.ssh/config`, so port, user and
+  key can live there.
+- A path in `<ENV>_SSH_KEY` pins one specific key (`-i … -o IdentitiesOnly=yes`), useful when the agent
+  holds many keys and the server drops the connection after too many attempts.
+- Every connection runs with `BatchMode=yes`, `PasswordAuthentication=no`,
+  `KbdInteractiveAuthentication=no`, `PreferredAuthentications=publickey`: a missing key **fails in
+  seconds** instead of hanging on a prompt the agent cannot answer.
+- `bin/deploy <env> doctor` tests the key first. If it fails, the fix is on the user's side, and the
+  agent says so instead of looking for another way in: load the key (`ssh-add`), or install the public
+  key on the server (`ssh-copy-id -i ~/.ssh/<key>.pub user@host`, or the hosting panel's SSH-keys
+  page). A host that accepts only passwords is not supported: ask the user to enable key access.
 
 The theme directory is mirrored with `--delete` (a release is complete); `mu-plugins/` is **not** —
 hosts often drop their own mu-plugins there. Never core, never `uploads/`, never `wp-config.php`.

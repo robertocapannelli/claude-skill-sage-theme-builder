@@ -29,7 +29,8 @@ silently: editor/front-end parity, content migrations, i18n, schema.org, tests, 
 - **Tests** — PHPUnit + Jest suite shape, and the four wiring traps that make it lie.
 - **Migrations** — renames of blocks, CPTs, options and meta treated as idempotent DB migrations.
 - **Deploys** — one audited door, `bin/deploy`: every push builds first; staging is routine,
-  production runs only on explicit request, after a backup, over SSH (rsync) or SFTP (lftp).
+  production runs only on explicit request, after a backup, over SSH (rsync) or SFTP (lftp) —
+  always authenticated with the SSH keys already on your computer, never a password.
 
 ## Principles it enforces
 

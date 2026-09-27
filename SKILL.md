@@ -13,7 +13,7 @@ description: >-
   real project on disk.
 allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
 metadata:
-  version: "2.2.1"
+  version: "2.3.0"
 ---
 
 # Sage Theme Builder
@@ -77,7 +77,8 @@ architecture, different build commands.
    current request — propose the message and stop. See `references/project-kickoff.md`.
 10. **Deploys go through `bin/deploy`, always build first, and production is explicit-only.** Staging
    is the agent's to use; production runs only when the user asks for it in the current message,
-   never as a follow-up to a staging deploy. See `references/remote-environments.md`.
+   never as a follow-up to a staging deploy. Remote access is **always by SSH key** — the keys already
+   on the computer, never a password. See `references/remote-environments.md`.
 11. **Secrets never pass through the conversation.** `.env` holds local/staging/production config,
    is **always gitignored and never tracked**, `chmod 600`; `.env.example` is **always tracked**; secrets are written as `CHANGE_ME` for the user to fill in.
 12. **Users are the owner's.** On a site built from scratch, ask which admin username (never `admin`)
