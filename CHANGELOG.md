@@ -2,6 +2,12 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 2.6.1 — 2026-09-27
+
+- `remote-environments.md`: `eval-file` listed among the commands; new section *Adding content instead
+  of replacing the database* — backup, trash (never delete) the default content, run the idempotent
+  seed with `eval-file`, align site options and effective locale, verify by diffing rendered pages.
+
 ## 2.6.0 — 2026-09-27
 
 - **Every deploy is backed up first** — `push`, `bootstrap`, `eval-file`, staging and production:
