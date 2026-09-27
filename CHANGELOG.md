@@ -2,6 +2,15 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 2.2.1 — 2026-09-27
+
+- `.env` always gitignored and never tracked, `.env.example` always tracked: new `assets/gitignore`
+  copied verbatim, three verification checks at kickoff, `git add .env.example` staged right away.
+- `bin/deploy` refuses to run if `.env` is tracked, warns if `.env.example` is ignored.
+- Guard hook: `git add .env .env.example` is now blocked (previously the mention of `.env.example`
+  let the whole command through).
+- `scripts/package.sh` verifies the gitignore template's semantics in a scratch repository.
+
 ## 2.2.0 — 2026-09-27
 
 - **`.env.example` is complete from the start**: `assets/env.example` now has every key — project,

@@ -21,9 +21,15 @@ if [[ "$cmd" =~ (^|[^A-Za-z0-9_-])(ssh|scp|sftp|rsync|lftp|sshpass|ftp)($|[^A-Za
     exit 2
 fi
 
-# 3. Anything that would print .env (the Read tool is covered by a deny rule in settings.json).
-if [[ "$cmd" =~ (^|[^A-Za-z0-9_.-])\.env($|[^A-Za-z0-9_.-]|\.[a-z]+) ]] && [[ ! "$cmd" =~ \.env\.example ]]; then
-    echo "Access to .env from the shell is blocked: ask the user for the value you need" >&2
+# 3. Anything that touches .env (the Read tool is covered by a deny rule in settings.json).
+#    .env.example is fine — strip it before looking, so "git add .env .env.example" is still caught.
+stripped="${cmd//.env.example/}"
+# Read-only git checks on .env's status are allowed (they never print its content), if not chained.
+if [[ "$cmd" =~ ^[[:space:]]*git[[:space:]]+(check-ignore|ls-files)([[:space:]][^\;\&\|\>\<\`\$]*)?$ ]]; then
+    stripped=""
+fi
+if [[ "$stripped" =~ (^|[^A-Za-z0-9_.-])\.env($|[^A-Za-z0-9_.-]|\.[a-z]+) ]]; then
+    echo "Access to .env from the shell is blocked (it is never read, tracked or committed): ask the user for the value you need" >&2
     exit 2
 fi
 

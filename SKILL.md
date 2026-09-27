@@ -13,7 +13,7 @@ description: >-
   real project on disk.
 allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
 metadata:
-  version: "2.2.0"
+  version: "2.2.1"
 ---
 
 # Sage Theme Builder
@@ -79,7 +79,7 @@ architecture, different build commands.
    is the agent's to use; production runs only when the user asks for it in the current message,
    never as a follow-up to a staging deploy. See `references/remote-environments.md`.
 11. **Secrets never pass through the conversation.** `.env` holds local/staging/production config,
-   is gitignored and `chmod 600`; secrets are written as `CHANGE_ME` for the user to fill in.
+   is **always gitignored and never tracked**, `chmod 600`; `.env.example` is **always tracked**; secrets are written as `CHANGE_ME` for the user to fill in.
 12. **Users are the owner's.** On a site built from scratch, ask which admin username (never `admin`)
    and email to create, and remind the user to change the generated password. On an existing site,
    never create or change users unless asked.
@@ -190,14 +190,14 @@ Read this table first whenever something "doesn't show up but throws no error".
 | `references/project-memory.md` | Writing the project's CLAUDE.md as a deliverable |
 | `references/acf-usage.md` | Only for projects that already have ACF — including how to get off it |
 
-**Assets to copy, not rewrite:** `assets/bin/deploy`, `assets/bin/translate-check`, `assets/env.example`,
+**Assets to copy, not rewrite:** `assets/gitignore`, `assets/bin/deploy`, `assets/bin/translate-check`, `assets/env.example`,
 `assets/claude/settings.json`, `assets/claude/hooks/deploy-guard.sh`.
 
 ## Definition of done
 
 - [ ] Git initialised with the user's remote; no commit or push made without an explicit request.
 - [ ] `.env.example` has every key (local, staging, production) with fictitious values; `.env`
-      (gitignored, `chmod 600`) has the same keys; `bin/deploy check-env` shown to the user;
+      (gitignored and untracked, `chmod 600`) has the same keys; `.env.example` is tracked; `bin/deploy check-env` shown to the user;
       `bin/deploy selftest` passes; `.claude/settings.json` + guard hook installed.
 - [ ] New site only: admin username/email asked (not `admin`), password-change reminder given.
 - [ ] The login screen shows the company logo.

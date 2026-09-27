@@ -85,7 +85,13 @@ load_env() {
     local perms
     perms="$(stat -c %a .env 2>/dev/null || stat -f %Lp .env)"
     [[ "$perms" == 600 ]] || die ".env must be chmod 600 (currently $perms)"
+    if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+        die ".env is TRACKED by git — run 'git rm --cached .env' and rotate any secret that was pushed"
+    fi
     git check-ignore -q .env 2>/dev/null || die ".env is not gitignored — fix .gitignore first"
+    if [[ -f .env.example ]] && git check-ignore -q .env.example 2>/dev/null; then
+        warn ".env.example is gitignored — it must be tracked (add '!.env.example' to .gitignore)"
+    fi
     local line key val
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "$line" =~ ^[[:space:]]*(#.*)?$ ]] && continue

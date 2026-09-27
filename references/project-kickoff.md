@@ -26,31 +26,29 @@ git remote add origin <url>        # or: git remote set-url origin <url> if one 
 git remote -v                      # show it back to the user
 ```
 
-`.gitignore` at the repository root — at minimum:
+`.gitignore` at the repository root: **copy `assets/gitignore` verbatim** (merge its lines into an
+existing one; never replace the `.env` block with a broader pattern like `.env*`, which would also
+ignore `.env.example`).
 
-```gitignore
-.env
-.env.*
-!.env.example
-node_modules/
-vendor/
-wp-content/themes/*/public/build/
-wp-content/themes/*/public/blocks/
-wp-content/uploads/
-.deploy-build/
-.deploy-logs/
-.deploy-backups/
-.DS_Store
-# WordPress core, if the repo is the site root
-/wp-admin/
-/wp-includes/
-/wp-*.php
-/index.php
-/license.txt
-/readme.html
-/xmlrpc.php
-wp-config.php
+### `.env` ignored, `.env.example` tracked — always
+
+| File | Git |
+|---|---|
+| `.env` | **always ignored**, never tracked, never `git add -f` |
+| `.env.example` | **always tracked** — it is the only place the project's keys are documented |
+
+Verify right after creating both files, and stop to fix `.gitignore` if any line fails:
+
+```bash
+git check-ignore -q .env          && echo "ok: .env ignored"          # must print
+git check-ignore -q .env.example  || echo "ok: .env.example tracked"  # must print
+git ls-files --error-unmatch .env 2>/dev/null && echo "DANGER: .env is tracked"   # must print nothing
+git add .env.example              # staged now; it lands in the first commit the user asks for
 ```
+
+If `.env` turns out to be tracked (an old repository, a `git add -f`), ignoring it is not enough:
+`git rm --cached .env`, tell the user, and treat every secret it contained as exposed if it was ever
+pushed — rotate them.
 
 Build output is ignored **on purpose**: it never drifts from the source, and it is why every deploy
 builds (`remote-environments.md`).
@@ -169,7 +167,8 @@ already contain it, save it as `resources/images/logo.svg`, and wire the login s
 ## Checklist
 
 - [ ] `origin` set and shown back to the user; default branch named; no commit made without a request.
-- [ ] `.gitignore` covers `.env`, build output, `vendor/`, `node_modules/`, uploads, core.
+- [ ] `.gitignore` copied from `assets/gitignore`; `.env` ignored and untracked, `.env.example` not
+      ignored and staged (`git add .env.example`) — the three checks above pass.
 - [ ] `.env.example` is a verbatim copy of `assets/env.example`: every key, production included, with
       a fictitious value — no bare `KEY=` line.
 - [ ] `.env` has every key of `.env.example` (real values where known, secrets `CHANGE_ME`),
