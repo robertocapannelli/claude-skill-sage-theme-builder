@@ -27,6 +27,7 @@ bin/deploy staging bootstrap --plan                   # FIRST deploy: what would
 bin/deploy staging bootstrap --confirm-bootstrap=<slug> [--with-db]   # after the user confirms
 bin/deploy production push --confirm-production=<slug>   # explicit request only — see below
 bin/deploy <env> wp <args…>                           # remote wp-cli (ssh only)
+bin/deploy <env> eval-file <file.php> [args…]         # run a LOCAL wp-cli script (seed, PHP migration) remotely
 bin/deploy <env> backup                               # snapshot now (every deploy does it anyway)
 bin/deploy <env> backups                              # list the local backups
 bin/deploy <env> restore <id|latest> --confirm-restore=<slug> [--files-only|--db-only] [--dry-run]
@@ -132,6 +133,24 @@ explicit request (`--with-db` there overwrites live data: say so plainly before 
 
 Over **sftp** there is no remote wp-cli: `--with-db` is refused (import the dump from the hosting
 panel) and activation is left to the user in wp-admin — the script says which theme and plugins.
+
+### Adding content instead of replacing the database
+
+When the server already has its own database (its users, the hosting's plugins and their settings)
+and the user asks to *add what is missing* rather than overwrite it, prefer the project's idempotent
+seed over `--with-db`:
+
+1. `bin/deploy <env> db-backup` (or `backup`);
+2. move WordPress's default content to the **trash**, never delete it (`wp post delete <ids>`, no
+   `--force`): trashed posts get a `__trashed` slug, so a slug-based seed no longer finds the stock
+   `privacy-policy` draft and creates the real page. Ask the user first — it is their server;
+3. `bin/deploy <env> eval-file bin/seed.php` — uploads the script's directory (`.php` only, every
+   file must start with `defined('ABSPATH') || exit`) to a throwaway folder under `wp-content/`,
+   runs it, removes it even on failure. Never `force` on a server where editors may have worked;
+4. align the site options the seed does not own (`blogname`, date/time format, timezone) and check
+   the **effective** locale with `get_locale()`, not the `WPLANG` option — they can differ locally;
+5. verify by diffing the rendered `<body>` of every URL on both sides, normalising host, IDs, nonces,
+   and the CDN's email obfuscation; then `blog_public = 0` on staging.
 
 ## Staging vs production
 
