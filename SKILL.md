@@ -13,7 +13,7 @@ description: >-
   real project on disk.
 allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
 metadata:
-  version: "2.1.0"
+  version: "2.2.0"
 ---
 
 # Sage Theme Builder
@@ -97,7 +97,7 @@ testimonial block" → Phase 1 check, then Phase 5).
 
 **0 — Kickoff** (new project; on an existing one, a gap check after recon — add what is missing,
 overwrite nothing). Ask for git remote and branch → `git init` + `origin`; ask for the environment data
-→ `.env` + `.env.example`; copy `bin/deploy`, `.claude/settings.json` and the guard hook from this
+→ `.env.example` copied verbatim from `assets/env.example` (every key, production included, fictitious values) + `.env` with the same keys; copy `bin/deploy`, `.claude/settings.json` and the guard hook from this
 skill's `assets/`; ask which languages besides Italian → `sage.pot` + `it_IT.po`; ask for the company logo; on a site built from scratch, ask for the admin username
 and email, install, remind to change the password. → `project-kickoff.md`
 
@@ -196,7 +196,8 @@ Read this table first whenever something "doesn't show up but throws no error".
 ## Definition of done
 
 - [ ] Git initialised with the user's remote; no commit or push made without an explicit request.
-- [ ] `.env` (gitignored, `chmod 600`) covers local, staging, production; `.env.example` exists;
+- [ ] `.env.example` has every key (local, staging, production) with fictitious values; `.env`
+      (gitignored, `chmod 600`) has the same keys; `bin/deploy check-env` shown to the user;
       `bin/deploy selftest` passes; `.claude/settings.json` + guard hook installed.
 - [ ] New site only: admin username/email asked (not `admin`), password-change reminder given.
 - [ ] The login screen shows the company logo.

@@ -8,6 +8,14 @@ version=$(sed -nE 's/^[[:space:]]+version:[[:space:]]*"?([0-9]+\.[0-9]+\.[0-9]+)
 [[ -n "$version" ]] || { echo "no metadata.version in SKILL.md" >&2; exit 1; }
 missing=$(grep -oE '`(references|assets)/[A-Za-z0-9._/-]+`' SKILL.md references/*.md | cut -d'`' -f2 | sort -u | while read -r f; do [[ -e "$f" ]] || echo "$f"; done)
 [[ -z "$missing" ]] || { echo "referenced but missing:"; echo "$missing"; exit 1; } >&2
+# every key bin/deploy reads must exist in assets/env.example with a non-empty value
+keys=$( { grep -oE 'envvar "?[A-Z_]+"?' assets/bin/deploy | grep -oE '[A-Z][A-Z_]+$' | sed 's/^/STAGING_/;p;s/^STAGING_/PRODUCTION_/'
+          echo PROJECT_SLUG; echo THEME_DIR; echo MU_PLUGINS_DIR; } | sort -u )
+bad=""
+for k in $keys; do grep -qE "^$k=[^[:space:]#]" assets/env.example || bad="$bad $k"; done
+[[ -z "$bad" ]] || { echo "assets/env.example missing or empty:$bad" >&2; exit 1; }
+if grep -qE '^[A-Z_]+=([[:space:]]|#|$)' assets/env.example; then echo "assets/env.example has keys without a value" >&2; exit 1; fi
+
 mkdir -p dist
 out="dist/sage-theme-builder-$version.zip"
 rm -f "$out"

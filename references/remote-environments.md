@@ -10,7 +10,7 @@ Ready-made files in this skill — **copy them, don't rewrite them from memory**
 | Skill asset | Goes to (project) |
 |---|---|
 | `assets/bin/deploy` | `bin/deploy` (`chmod +x`) |
-| `assets/env.example` | `.env.example` (committed) → copied to `.env` (gitignored, `chmod 600`) |
+| `assets/env.example` | `.env.example` (committed, verbatim copy: every key with a fictitious value) → `.env` (gitignored, `chmod 600`, same keys) |
 | `assets/claude/settings.json` | `.claude/settings.json` (merge if one exists) |
 | `assets/claude/hooks/deploy-guard.sh` | `.claude/hooks/deploy-guard.sh` (`chmod +x`) |
 
@@ -18,6 +18,7 @@ Then `bin/deploy selftest` must print *all cases pass*.
 
 ```
 bin/deploy selftest                                   # offline test of the path validator
+bin/deploy check-env                                  # which .env keys still hold placeholder values
 bin/deploy staging doctor                             # read-only checks: wp-config, wp-cli, DB
 bin/deploy staging push [--dry-run]                   # BUILD, then upload theme + mu-plugins
 bin/deploy production push --confirm-production=<slug>   # explicit request only — see below
@@ -70,7 +71,9 @@ Plugins are not deployed by default; add them to the script only if the project 
 
 ## Config: `.env`, parsed, never sourced
 
-The script parses `KEY=value` lines instead of `source`-ing the file (which would execute it), refuses
+Values containing `example` or `CHANGE_ME` are placeholders from `.env.example`: the script treats
+them as unset and stops with the key's name. The script parses `KEY=value` lines instead of
+`source`-ing the file (which would execute it), refuses
 to run unless `.env` is `chmod 600` **and** gitignored, and needs no remote DB credentials — remote
 `wp-cli` reads them from the remote `wp-config.php`. The `deny` rules and the guard hook keep `.env`
 out of every transcript; when an agent needs a value, it asks the user.

@@ -2,6 +2,19 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 2.2.0 — 2026-09-27
+
+- **`.env.example` is complete from the start**: `assets/env.example` now has every key — project,
+  local, staging and production — each with a fictitious value and a comment; the kickoff copies it
+  verbatim instead of writing bare `KEY=` lines (the 2.0 wording asked for "no values", which caused
+  it).
+- `.env` is written with every key; unknown values keep the fictitious one.
+- `bin/deploy` treats values containing `example` or `CHANGE_ME` as unset and stops naming the key;
+  new `bin/deploy check-env` lists what is still to fill.
+- `scripts/package.sh` fails if a key read by `bin/deploy` is missing from `assets/env.example` or has
+  no value.
+- One new eval.
+
 ## 2.1.0 — 2026-09-27
 
 - **English-only codebase, mandatory translations** (`i18n.md`, principle 14): code, comments and
