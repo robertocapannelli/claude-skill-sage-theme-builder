@@ -13,7 +13,7 @@ description: >-
   real project on disk.
 allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
 metadata:
-  version: "2.0.1"
+  version: "2.1.0"
 ---
 
 # Sage Theme Builder
@@ -85,6 +85,10 @@ architecture, different build commands.
    never create or change users unless asked.
 13. **The login screen carries the company logo**, never the WordPress one
    (`references/login-branding.md`).
+14. **The codebase is English; the site speaks through translation files.** Code, comments,
+   identifiers, commit messages and every source string are English — always, whatever the client's
+   language. Every string has its translation: an Italian catalog always exists (theme and mu-plugin),
+   other languages are added on request, and no untranslated entry ships. See `references/i18n.md`.
 
 ## Workflow
 
@@ -94,7 +98,7 @@ testimonial block" → Phase 1 check, then Phase 5).
 **0 — Kickoff** (new project; on an existing one, a gap check after recon — add what is missing,
 overwrite nothing). Ask for git remote and branch → `git init` + `origin`; ask for the environment data
 → `.env` + `.env.example`; copy `bin/deploy`, `.claude/settings.json` and the guard hook from this
-skill's `assets/`; ask for the company logo; on a site built from scratch, ask for the admin username
+skill's `assets/`; ask which languages besides Italian → `sage.pot` + `it_IT.po`; ask for the company logo; on a site built from scratch, ask for the admin username
 and email, install, remind to change the password. → `project-kickoff.md`
 
 **1 — Recon.** Read `composer.json`, `package.json`, `vite.config.js`, `app/setup.php`,
@@ -134,7 +138,8 @@ attribute defaults is a database migration: idempotent script, `--dry-run`, run 
 Leave the project a `CLAUDE.md` with the commands, constraints and traps. →
 `content-migrations.md`, `project-memory.md`
 
-**11 — Build & verify.** `npm run build`, then `wp acorn optimize`. Editor loads clean, the front end
+**11 — Build & verify.** `npm run translate`, translate every new entry in every catalog,
+`npm run translate:compile` and `translate:check`; then `npm run build`, then `wp acorn optimize`. Editor loads clean, the front end
 ships no block React, the JSON-LD validates, the checklist below passes.
 
 **12 — Deploy.** `bin/deploy staging push` (it builds first) and report the staging URL. Production
@@ -151,6 +156,7 @@ Read this table first whenever something "doesn't show up but throws no error".
 | A Tailwind class typed by an editor does nothing | Tailwind never scans block attributes — needs `theme(static)`, and `@source` for PHP | `design-to-blade.md` |
 | White CTA text invisible in the editor only | an unlayered rule in `editor.css` beats `@layer utilities` | `block-editor-parity.md` |
 | Headings/lists unstyled in the canvas, paragraphs fine | prose class applied as `className` instead of a wrapper element | `block-editor-parity.md` |
+| English labels on an Italian site | a string added to the code but not translated in `it_IT.po`, or a copy default typed into `block.json` | `i18n.md` |
 | Editor translations disappear after a build | `make-json` without `--no-purge`, or per-source catalogs that don't match the single bundle | `i18n.md` |
 | A published page's copy changes with no edit | a block saved without attributes inherits changed `block.json` defaults | `content-migrations.md` |
 | A migrated block stops parsing | attributes written with `wp_json_encode()` instead of `serialize_block_attributes()` | `content-migrations.md` |
@@ -177,14 +183,14 @@ Read this table first whenever something "doesn't show up but throws no error".
 | `references/schema-seo.md` | JSON-LD patterns, invalid-node rule, semantic/performance/LLM rules, `llms.txt` |
 | `references/testing.md` | Three-level suite, the four wiring traps, the block tests you write once |
 | `references/content-migrations.md` | Renames and format changes as DB migrations; the script recipe |
-| `references/i18n.md` | POT/PO/MO/JSON pipeline and its two silent traps |
+| `references/i18n.md` | English-only codebase, mandatory Italian catalog, extra languages, POT/PO/MO/JSON pipeline and its two silent traps |
 | `references/plugin-interop.md` | Optional-plugin degradation, `the_content` priorities, WP-CLI resave trap |
 | `references/remote-environments.md` | `bin/deploy`: build-then-upload, staging vs production gates, ssh/sftp |
 | `references/login-branding.md` | Company logo on `wp-login.php` |
 | `references/project-memory.md` | Writing the project's CLAUDE.md as a deliverable |
 | `references/acf-usage.md` | Only for projects that already have ACF — including how to get off it |
 
-**Assets to copy, not rewrite:** `assets/bin/deploy`, `assets/env.example`,
+**Assets to copy, not rewrite:** `assets/bin/deploy`, `assets/bin/translate-check`, `assets/env.example`,
 `assets/claude/settings.json`, `assets/claude/hooks/deploy-guard.sh`.
 
 ## Definition of done
@@ -207,7 +213,9 @@ Read this table first whenever something "doesn't show up but throws no error".
 - [ ] Every page emits a complete, valid schema.org graph; `title`/description/canonical left to WP +
       any SEO plugin.
 - [ ] The theme renders fully with **zero plugins active**; optional integrations degrade to nothing.
-- [ ] All code in English; output escaped by context.
+- [ ] All code, comments and source strings in English; output escaped by context.
+- [ ] Every string translated in `it_IT` (and any other requested locale); `translate:check` passes;
+      no visible copy in `block.json` defaults.
 - [ ] The "does this need a test?" question was answered for every new function, and the answers hold.
 - [ ] Every rename or format change shipped with an idempotent migration script, and its per-environment
       status is recorded.

@@ -342,6 +342,20 @@
         "Imposta login_headerurl sulla home e login_headertext sul nome del sito",
         "Aggiunge il file al manifest di bootstrap del tema"
       ]
+    },
+    {
+      "id": "english-codebase-italian-catalog",
+      "prompt": "Crea un blocco 'Servizi' con titolo 'I nostri servizi' e un pulsante 'Scopri di più'. Il sito è in italiano.",
+      "expected_output": "Il codice, i commenti e le stringhe sorgente sono in inglese; il testo iniziale del blocco arriva da una variation di default con __() e non dai default di block.json; le traduzioni italiane vengono aggiunte a it_IT.po e compilate.",
+      "files": [],
+      "assertions": [
+        "Nessuna stringa italiana nel codice sorgente (PHP, JS, block.json)",
+        "Titolo e descrizione del blocco in block.json sono in inglese",
+        "I default di block.json per il testo visibile sono stringhe vuote",
+        "Il testo iniziale è inserito tramite una variation di default con __()",
+        "Le traduzioni italiane sono aggiunte a resources/lang/it_IT.po e compilate",
+        "Esegue o indica translate:check prima di considerare il lavoro finito"
+      ]
     }
   ]
 }

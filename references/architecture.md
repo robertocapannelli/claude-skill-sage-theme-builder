@@ -166,8 +166,9 @@ does not exist yet, so chrome never renders a broken link on a fresh install.
 
 ## Conventions
 
-- **All code, comments, identifiers and commit messages in English**, regardless of the client's
-  language. UI strings are translatable (`i18n.md`).
+- **All code, comments, identifiers, commit messages and source strings in English**, regardless of
+  the client's language — mandatory. Every UI string goes through a translation function and has its
+  translation in the project's catalogs: Italian always, other languages on request (`i18n.md`).
 - **Escaping is context-driven — there is no one-size function.** Escape at the point of output:
   plain text → `esc_html()` (Blade `{{ }}` already does it); attributes → `esc_attr()`; URLs →
   `esc_url()`; content where limited HTML is intentional (a RichText field: bold, links, lists) →
