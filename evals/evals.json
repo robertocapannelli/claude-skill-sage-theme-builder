@@ -347,14 +347,14 @@
     {
       "id": "english-codebase-italian-catalog",
       "prompt": "Crea un blocco 'Servizi' con titolo 'I nostri servizi' e un pulsante 'Scopri di più'. Il sito è in italiano.",
-      "expected_output": "Il codice, i commenti e le stringhe sorgente sono in inglese; il testo iniziale del blocco arriva da una variation di default con __() e non dai default di block.json; le traduzioni italiane vengono aggiunte a it_IT.po e compilate.",
+      "expected_output": "Il codice, i commenti e le stringhe sorgente sono in inglese con dominio letterale; il testo iniziale del blocco arriva da una variation di default con __() (blocco nuovo) oppure da default inglesi in block.json tradotti a runtime; le traduzioni italiane vengono aggiunte a it_IT.po e compilate perché la lingua principale è l'italiano.",
       "files": [],
       "assertions": [
         "Nessuna stringa italiana nel codice sorgente (PHP, JS, block.json)",
         "Titolo e descrizione del blocco in block.json sono in inglese",
-        "I default di block.json per il testo visibile sono stringhe vuote",
-        "Il testo iniziale è inserito tramite una variation di default con __()",
-        "Le traduzioni italiane sono aggiunte a resources/lang/it_IT.po e compilate",
+        "Il testo iniziale è inglese: variation di default con __() oppure default inglesi di block.json tradotti con il filtro block_type_metadata / localizeMetadata()",
+        "Il dominio dei testi è un letterale ('sage'), non una costante",
+        "Le traduzioni italiane sono aggiunte a resources/lang/it_IT.po e compilate con bin/translate compile",
         "Esegue o indica translate:check prima di considerare il lavoro finito"
       ]
     },
@@ -411,6 +411,44 @@
         "Propone bin/deploy init (o migrate-env se esiste già un .env)",
         "Il commit, se fatto su richiesta, non contiene segreti né dati dei server",
         "Non legge né stampa i valori delle conf esistenti"
+      ]
+    },
+    {
+      "id": "kickoff-main-language-english",
+      "prompt": "Nuovo sito WordPress per un cliente: sito in inglese, partiamo con il kickoff.",
+      "expected_output": "Claude chiede la lingua principale (qui inglese), non crea cataloghi né cambia WPLANG, ma copia bin/translate e translate-check e usa comunque stringhe inglesi con __() e dominio letterale.",
+      "files": [],
+      "assertions": [
+        "Chiede esplicitamente la lingua principale del sito",
+        "Non crea un catalogo it_IT né lo pretende",
+        "Non modifica WPLANG",
+        "translate-check non fallisce per l'assenza di it_IT"
+      ]
+    },
+    {
+      "id": "kickoff-main-language-italian",
+      "prompt": "Nuovo sito WordPress, il sito è in italiano. Fai il kickoff.",
+      "expected_output": "Claude registra l'italiano come lingua principale, imposta WPLANG con wp language core install/activate it_IT, crea sage.pot e it_IT.po per il tema e <dominio>-it_IT.po per il mu-plugin, e carica il mu-plugin con load_textdomain() su init -100.",
+      "files": [],
+      "assertions": [
+        "Imposta WPLANG (it_IT) così <html lang> e og:locale non restano en-US",
+        "Crea it_IT.po per il tema e il .po del mu-plugin",
+        "Il mu-plugin non usa load_muplugin_textdomain() ma load_textdomain() con percorso esplicito su init -100",
+        "Annota la lingua principale nel CLAUDE.md del progetto"
+      ]
+    },
+    {
+      "id": "mass-string-conversion-verified",
+      "prompt": "Il tema ha centinaia di stringhe italiane scritte nel codice. Portale in inglese con traduzione italiana, il sito non deve cambiare.",
+      "expected_output": "Claude fotografa testo visibile, attributi e JSON-LD di tutte le URL pubbliche prima, converte con msgstr identico al testo originale, rifotografa due volte il dopo per escludere il contenuto casuale e confronta; i default dei blocchi sono tradotti a runtime; con più agenti le coppie vanno in JSONL con rilevamento dei conflitti.",
+      "files": [],
+      "assertions": [
+        "Scatta le fotografie prima di modificare il codice",
+        "Il msgstr è identico carattere per carattere al testo originale",
+        "Confronta testo visibile, alt/aria-label/placeholder/title e JSON-LD prima e dopo",
+        "Usa due fotografie consecutive del dopo per ignorare il contenuto casuale",
+        "I default dei blocchi restano in inglese in block.json e sono tradotti via block_type_metadata e localizeMetadata()",
+        "Un msgid con due traduzioni diverse è segnalato e risolto con _x()"
       ]
     }
   ]

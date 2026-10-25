@@ -203,14 +203,23 @@ password is never reused there.
 
 ## 5. Languages
 
-The codebase is English; the site speaks through translation files (`i18n.md`). Ask:
+The codebase is English; the site's main language lives in a translation file (`i18n.md`). Ask:
 
-- Site language(s)? **Italian is the default and always gets a catalog.** Any other language adds its
-  own catalog from the same POT.
+- **What is the site's main language?** Never assume it. Record the answer (locale, e.g. `it_IT`) in
+  the project `CLAUDE.md`.
+- Any other language besides the main one? Each adds its own catalog from the same POT.
 
-Then: `resources/lang/sage.pot` + `it_IT.po`, the mu-plugin's `<domain>-it_IT.po`, the `translate*`
-npm scripts, the `load_textdomain()` hook. On a site built from scratch also set the site language:
-`wp language core install it_IT --activate`.
+Then:
+
+- **Main language is not English:** `resources/lang/sage.pot` + `<locale>.po` for the theme, the
+  mu-plugin's `lang/<domain>.pot` + `<domain>-<locale>.po`, and set the site language — on a site built
+  from scratch `wp language core install <locale>` + `wp language core activate <locale>` (sets
+  `WPLANG`; without it `<html lang>` and `og:locale` stay `en-US` on a non-English site). On an
+  existing site check `get_locale()` and tell the user if it does not match.
+- **Main language is English:** no catalog is required and no `WPLANG` change.
+- In both cases: copy `bin/translate`, `bin/translate-check`, `bin/block-defaults-pot.mjs`, add the
+  `translate*` npm scripts and the loaders (theme `load_textdomain()`; mu-plugin `load_textdomain()`
+  on `init` −100) from `i18n.md`.
 
 ## 6. Company logo
 
@@ -232,5 +241,5 @@ already contain it, save it as `resources/images/logo.svg`, and wire the login s
       `check-env` clean and shown to the user. No legacy `.env` left (or `migrate-env` run).
 - [ ] `.claude/settings.json` (slug substituted) + guard hook installed.
 - [ ] New site only: admin user and email asked, never `admin`; password-change reminder given.
-- [ ] `it_IT.po` for theme and mu-plugin exist; any extra language asked; `translate:check` wired.
+- [ ] Main language asked and recorded; if not English: its catalogs for theme and mu-plugin exist and `WPLANG` is set; any extra language asked; `translate:check` wired.
 - [ ] Logo in `resources/images/`, login screen branded.

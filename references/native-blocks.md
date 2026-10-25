@@ -102,8 +102,10 @@ editor filters — and the wp-scripts bundle for the blocks themselves.
   editor break the markup contract your schema and CSS depend on.
 - `textdomain` must match the PHP domain, or `wp_set_script_translations()` finds nothing (`i18n.md`).
 - Repeaters are `type: "array"` with an object-shaped default.
-- **Visible copy defaults to `""`.** `block.json` defaults are not translatable, so copy typed there
-  is English on an Italian site. Seed placeholder copy through a default variation instead (below).
+- **Visible copy:** for a new block, default to `""` and seed placeholder copy through a default
+  variation (below). Where defaults must carry copy (an existing site whose pages inherit them), write
+  it **in English** in `block.json`: it is translated at runtime by exact match — server filter and
+  `localizeMetadata()`, see `i18n.md` → *Block attribute defaults*. Never type main-language copy there.
 - **Defaults are load-bearing.** `render_block()` fills every unset attribute from `block.json` on
   every render, so a block saved as a bare void comment `<!-- wp:mytheme/faq /-->` renders today's
   defaults, not the ones it was inserted with. Changing a default rewrites published pages silently —
@@ -186,8 +188,9 @@ import { PanelBody, TextControl, TextareaControl, ToggleControl, Button, Flex } 
 import ServerSideRender from '@wordpress/server-side-render';
 import { __ } from '@wordpress/i18n';
 import metadata from '../../../blocks/faq/block.json';
+import { localizeMetadata } from '../_i18n';
 
-registerBlockType(metadata, {
+registerBlockType(localizeMetadata(metadata), {
     edit({ attributes, setAttributes }) {
         const items = attributes.items || [];
 
@@ -249,8 +252,10 @@ registerBlockType(metadata, {
 
 Rules behind that shape:
 
-- **`registerBlockType(metadata, …)` imports the same `block.json` the PHP registers.** Name and
-  attribute schema physically cannot drift.
+- **`registerBlockType(localizeMetadata(metadata), …)` imports the same `block.json` the PHP
+  registers.** Name and attribute schema physically cannot drift. `localizeMetadata()`
+  (`resources/js/blocks/_i18n.js`, `i18n.md`) translates `title`, `description`, `keywords` and the
+  defaults; a bare `registerBlockType(name, { ...metadata })` leaves them in English in the editor.
 - **`save() { return null; }`** — mandatory for a dynamic block. If it ever returns markup, that
   markup freezes into `post_content` and outlives your template.
 - **`<ServerSideRender>` as the block body**: the canvas preview *is* `render.php`'s output, so there
@@ -293,21 +298,24 @@ Rules:
 
 - **No visible literal in `render.php`.** The only strings allowed in the template are
   screen-reader-only labels and structural ARIA text, and those go through `__()` (`i18n.md`).
-  Placeholder copy that makes the block look right on insert comes from the default variation below,
-  never from `block.json` defaults.
+  Placeholder copy that makes the block look right on insert comes from the default variation below
+  (or, on a site whose pages inherit it, from English `block.json` defaults translated at runtime —
+  `i18n.md`).
 
 ### Placeholder copy: a default variation, in the editor's language
 
-`block.json` defaults can't be translated, and changing them later rewrites published pages
-(`content-migrations.md`). So copy attributes default to `""`, and the copy a new block starts with is
+Changing `block.json` defaults later rewrites published pages (`content-migrations.md`). So on a new
+block copy attributes default to `""`, and the copy a new block starts with is
 written **into its attributes at insertion** by a default variation defined in JS, where `__()` works:
 
 ```js
-registerBlockType(metadata, {
+const localized = localizeMetadata(metadata);
+
+registerBlockType(localized, {
     variations: [{
         name: 'default',
         isDefault: true,
-        title: metadata.title,
+        title: localized.title,
         scope: ['inserter'],
         attributes: {
             heading: __('Frequently asked questions', 'sage'),
@@ -318,8 +326,8 @@ registerBlockType(metadata, {
 });
 ```
 
-The source strings are English and go through the Italian catalog like every other string; the
-inserted block stores Italian copy as content, which is what it is. And since nothing visible lives in
+The source strings are English and go through the main-language catalog like every other string; the
+inserted block stores main-language copy as content, which is what it is. And since nothing visible lives in
 the defaults, changing placeholder copy later is a code change, not a database migration.
 - **Images always come with alt control** and the attachment id (for `srcset` via
   `wp_get_attachment_image()`), never a URL alone.

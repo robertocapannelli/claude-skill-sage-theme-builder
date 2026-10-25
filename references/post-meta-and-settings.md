@@ -119,10 +119,13 @@ add_action('init', function () {
 ```
 
 Load the textdomain **before** registration (`priority < 0`): `register_post_type()` freezes its
-labels at registration time, so an untranslated `__()` there stays untranslated forever.
+labels at registration time, so an untranslated `__()` there stays untranslated forever. Use
+`load_textdomain()` with the explicit `.mo` path, not `load_muplugin_textdomain()` (`i18n.md`).
 
 ```php
-add_action('init', fn () => load_muplugin_textdomain('mytheme', 'lang'), -10);
+add_action('init', function () {
+    load_textdomain('mytheme', __DIR__.'/lang/mytheme-'.determine_locale().'.mo');
+}, -100);
 ```
 
 ## Sidebar panels

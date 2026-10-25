@@ -2,6 +2,33 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 4.0.0 — 2026-10-25
+
+**Breaking: the main language is asked, not assumed. Italian is no longer a mandatory catalog.**
+
+- Kickoff asks the site's main language. Not English → theme and mu-plugin catalogs for it, `WPLANG` set
+  (without it `<html lang>` and `og:locale` stay `en-US`); English → no catalog required.
+- `bin/translate-check` no longer demands `it_IT`: it learns the main language from `MAIN_LOCALE`,
+  `--main-locale=` or `wp option get WPLANG`, and requires catalogs only for that language.
+- New `assets/bin/translate`: POT per component (theme, each mu-plugin), `msgmerge --no-fuzzy-matching`,
+  `compile`. Replaces the `wp i18n update-po/make-mo/make-json` npm scripts.
+- Editor strings: the PHP catalog is handed to `wp.i18n.setLocaleData()` through an inline script on
+  `wp-i18n`, empty entries filtered. No more `make-json`, merged `*-editor.json` or `--no-purge` traps.
+- Block attribute defaults may stay in `block.json` in English and are translated by exact match: server
+  filter `block_type_metadata`, editor helper `localizeMetadata()` (also title/description/keywords with
+  the make-pot contexts), and new `assets/bin/block-defaults-pot.mjs` that feeds make-pot. Warning added:
+  changing the English of a default without its translation changes every inheriting page.
+- New trap: from WP 6.7 `load_muplugin_textdomain()` only registers a path and is skipped when the theme
+  already loaded the domain; mu-plugins use `load_textdomain()` with an explicit path on `init` −100.
+- New rule: the text domain is always a literal (`make-pot` ignores constants).
+- Content vs code clarified: database content, CF7 form templates, migration scripts and lookup-key
+  titles stay in the site's language.
+- Converting existing strings: the main-language text is authoritative (`msgstr` identical); mandatory
+  before/after snapshot of every public URL (text, attributes, JSON-LD), with two "after" snapshots to
+  exclude random content; parallel agents write JSONL pairs and merging reports `msgid` conflicts
+  (resolved with `_x()`). Added to the Definition of done.
+- Evals: kickoff in English and in Italian, verified mass conversion.
+
 ## 3.0.0 — 2026-09-27
 
 **Breaking: the deploy config leaves the repository.**
