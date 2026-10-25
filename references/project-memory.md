@@ -8,6 +8,7 @@ in the repository's `CLAUDE.md` as you go — it is part of the handover, not a 
 
 - **Commands nobody can guess.** The build, the test entry point, the translation pipeline, and
   *where* each runs (host vs container). Include the flag that must never be dropped and why.
+- **A "Translations" section**: the site's main language and locale, the text domains, the `bin/translate` / `translate:check` commands, and the editor-strings and mu-plugin loading rules (`i18n.md`).
 - **Environment constraints.** "`wp` only exists inside the container", "the formatter must not touch
   these paths", "these files are gitignored and exist only locally".
 - **Traps, written symptom-first.** Start from what you would actually observe — *"the sidebar fields

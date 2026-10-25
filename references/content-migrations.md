@@ -31,6 +31,11 @@ published pages change with them, with no edit, no revision and no trace. So:
 **Before changing defaults, freeze the old ones into the attributes of every existing instance.** The
 migration writes them explicitly; only then may `block.json` change.
 
+This includes the *English* of a default that is translated at runtime (`i18n.md` → *Block attribute
+defaults*): the lookup is by exact string, so editing the English alone makes every inheriting page
+fall back to English. Change the `block.json` string and the `msgid` in every PO together, and freeze
+first if the visible text would otherwise move.
+
 ## Script skeleton
 
 Every migration in the project is the same shape. Copy it.

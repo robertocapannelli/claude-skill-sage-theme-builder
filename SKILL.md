@@ -13,7 +13,7 @@ description: >-
   real project on disk.
 allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
 metadata:
-  version: "3.0.0"
+  version: "4.0.0"
 ---
 
 # Sage Theme Builder
@@ -95,10 +95,14 @@ architecture, different build commands.
    never create or change users unless asked.
 13. **The login screen carries the company logo**, never the WordPress one
    (`references/login-branding.md`).
-14. **The codebase is English; the site speaks through translation files.** Code, comments,
-   identifiers, commit messages and every source string are English — always, whatever the client's
-   language. Every string has its translation: an Italian catalog always exists (theme and mu-plugin),
-   other languages are added on request, and no untranslated entry ships. See `references/i18n.md`.
+14. **The codebase is English; the site's main language lives in the catalog.** Code, comments,
+   identifiers, commit messages and every source string — including `block.json` titles and attribute
+   defaults — are English, inside `__()`/`_x()` with a **literal** text domain, whatever the client's
+   language. The main language (asked at kickoff, never assumed) has its catalog for theme and
+   mu-plugin and the site locale set; with English as main language no catalog is needed. Other
+   languages on request; no untranslated entry ships. When converting existing strings, the
+   main-language text is the authority (`msgstr` identical to what was there) and the result is proved
+   by a before/after snapshot of the public pages. See `references/i18n.md`.
 
 ## Workflow
 
@@ -109,7 +113,7 @@ testimonial block" → Phase 1 check, then Phase 5).
 overwrite nothing). On a new theme, **ask for the WordPress theme name first** and confirm the slug
 derived from it (folder, `style.css` with `Update URI: false`, block namespace, prefixes); then ask for git remote and branch → `git init` + `origin`; ask for the environment data
 → copy `bin/deploy` (set `PROJECT_SLUG`) and the conf templates, `bin/deploy init`, `key-setup` per environment, the user fills `~/.config/<slug>/*.conf`, `check-env`; copy `.claude/settings.json` and the guard hook from this
-skill's `assets/`; ask which languages besides Italian → `sage.pot` + `it_IT.po`; ask for the company logo; on a site built from scratch, ask for the admin username
+skill's `assets/`; ask the site's **main language** (and any others) → catalogs, `WPLANG`, `bin/translate*`, unless it is English; ask for the company logo; on a site built from scratch, ask for the admin username
 and email, install, remind to change the password. → `project-kickoff.md`
 
 **1 — Recon.** Read `composer.json`, `package.json`, `vite.config.js`, `app/setup.php`,
@@ -150,7 +154,8 @@ Leave the project a `CLAUDE.md` with the commands, constraints and traps. →
 `content-migrations.md`, `project-memory.md`
 
 **11 — Build & verify.** `npm run translate`, translate every new entry in every catalog,
-`npm run translate:compile` and `translate:check`; then `npm run build`, then `wp acorn optimize`. Editor loads clean, the front end
+`npm run translate:compile` and `translate:check`; after a mass string conversion, the before/after
+snapshot of every public URL (`i18n.md`); then `npm run build`, then `wp acorn optimize`. Editor loads clean, the front end
 ships no block React, the JSON-LD validates, the checklist below passes.
 
 **12 — Deploy.** First time on a server: `bin/deploy staging bootstrap --plan`, show it, ask which
@@ -170,8 +175,10 @@ Read this table first whenever something "doesn't show up but throws no error".
 | A Tailwind class typed by an editor does nothing | Tailwind never scans block attributes — needs `theme(static)`, and `@source` for PHP | `design-to-blade.md` |
 | White CTA text invisible in the editor only | an unlayered rule in `editor.css` beats `@layer utilities` | `block-editor-parity.md` |
 | Headings/lists unstyled in the canvas, paragraphs fine | prose class applied as `className` instead of a wrapper element | `block-editor-parity.md` |
-| English labels on an Italian site | a string added to the code but not translated in `it_IT.po`, or a copy default typed into `block.json` | `i18n.md` |
-| Editor translations disappear after a build | `make-json` without `--no-purge`, or per-source catalogs that don't match the single bundle | `i18n.md` |
+| English labels or `<html lang="en-US">` on a non-English site | a string missing from the main-language catalog, `WPLANG` not set, or a default changed in English without its `msgid` | `i18n.md` |
+| A mu-plugin's labels stay English although the `.mo` exists | `load_muplugin_textdomain()` (WP 6.7+) only registers a path and is skipped when the theme loaded the domain — use `load_textdomain()` on `init` −100 | `i18n.md` |
+| `wp i18n make-pot` misses strings | the text domain is a constant or variable, not a literal | `i18n.md` |
+| Editor labels English, or blank, in the block editor | the PHP catalog was not handed to `wp.i18n.setLocaleData()`, or empty `[""]` entries were sent | `i18n.md` |
 | A published page's copy changes with no edit | a block saved without attributes inherits changed `block.json` defaults | `content-migrations.md` |
 | A migrated block stops parsing | attributes written with `wp_json_encode()` instead of `serialize_block_attributes()` | `content-migrations.md` |
 | Fatal `TypeError` on a live page | arithmetic on an editor-supplied attribute in PHP 8 | `native-blocks.md` |
@@ -198,14 +205,14 @@ Read this table first whenever something "doesn't show up but throws no error".
 | `references/schema-seo.md` | JSON-LD patterns, invalid-node rule, semantic/performance/LLM rules, `llms.txt` |
 | `references/testing.md` | Three-level suite, the four wiring traps, the block tests you write once |
 | `references/content-migrations.md` | Renames and format changes as DB migrations; the script recipe |
-| `references/i18n.md` | English-only codebase, mandatory Italian catalog, extra languages, POT/PO/MO/JSON pipeline and its two silent traps |
+| `references/i18n.md` | English-only codebase, main-language catalog, `WPLANG`, `bin/translate`, editor strings via `setLocaleData`, block defaults, mass-conversion check |
 | `references/plugin-interop.md` | Optional-plugin degradation, `the_content` priorities, WP-CLI resave trap |
 | `references/remote-environments.md` | `bin/deploy`: build-then-upload, staging vs production gates, ssh/sftp |
 | `references/login-branding.md` | Company logo on `wp-login.php` |
 | `references/project-memory.md` | Writing the project's CLAUDE.md as a deliverable |
 | `references/acf-usage.md` | Only for projects that already have ACF — including how to get off it |
 
-**Assets to copy, not rewrite:** `assets/gitignore`, `assets/bin/deploy`, `assets/deploy-plugins.txt`, `assets/bin/translate-check`, `assets/deploy.conf.example`, `assets/deploy.local.conf.example`,
+**Assets to copy, not rewrite:** `assets/gitignore`, `assets/bin/deploy`, `assets/deploy-plugins.txt`, `assets/bin/translate`, `assets/bin/translate-check`, `assets/bin/block-defaults-pot.mjs`, `assets/deploy.conf.example`, `assets/deploy.local.conf.example`,
 `assets/claude/settings.json`, `assets/claude/hooks/deploy-guard.sh`.
 
 ## Definition of done
@@ -231,8 +238,12 @@ Read this table first whenever something "doesn't show up but throws no error".
       any SEO plugin.
 - [ ] The theme renders fully with **zero plugins active**; optional integrations degrade to nothing.
 - [ ] All code, comments and source strings in English; output escaped by context.
-- [ ] Every string translated in `it_IT` (and any other requested locale); `translate:check` passes;
-      no visible copy in `block.json` defaults.
+- [ ] Main language asked; if not English, every string translated in its catalog (and in any other
+      requested locale), `WPLANG` set, `translate:check` passes; text domains are literals; no
+      main-language copy in `block.json`.
+- [ ] After converting existing strings: visible text, `alt`/`aria-label`/`placeholder`/`title` and
+      JSON-LD of every public URL identical before and after (random content excluded via two "after"
+      snapshots); only strings that were already English may differ.
 - [ ] The "does this need a test?" question was answered for every new function, and the answers hold.
 - [ ] Every rename or format change shipped with an idempotent migration script, and its per-environment
       status is recorded.

@@ -36,8 +36,12 @@ require_once __DIR__ . '/<project>-core/plugin.php';
 // <project>-core/src/PostTypes/Product.php
 
 // Load the textdomain BEFORE anything registers labels: register_post_type() freezes them at
-// registration time, so an untranslated __() there stays untranslated forever.
-add_action('init', fn () => load_muplugin_textdomain('mytheme', 'lang'), -10);
+// registration time, so an untranslated __() there stays untranslated forever. Not
+// load_muplugin_textdomain(): since WP 6.7 it only registers a path, which never loads if the theme
+// already loaded the domain (references/i18n.md). Domain always a literal string.
+add_action('init', function () {
+    load_textdomain('mytheme', __DIR__.'/lang/mytheme-'.determine_locale().'.mo');
+}, -100);
 
 add_action('init', function () {
     register_post_type('product', [

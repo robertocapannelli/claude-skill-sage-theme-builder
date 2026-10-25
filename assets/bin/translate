@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# bin/translate — keep every translation catalog in step with the source.
+#
+#   bin/translate            regenerate each POT from the source, merge it into every PO
+#                            (msgmerge --no-fuzzy-matching: a changed msgid becomes an EMPTY entry to
+#                            translate, never a guessed fuzzy one)
+#   bin/translate compile    compile every PO into its MO
+#
+# One component per theme and per mu-plugin. A component exists when its POT already exists:
+#   wp-content/themes/<theme>/resources/lang/<domain>.pot      (PO: <locale>.po)
+#   wp-content/mu-plugins/<plugin>/lang/<domain>.pot           (PO: <domain>-<locale>.po)
+# The text domain is the POT's file name. Create the POT (and the first PO) at kickoff.
+#
+# Needs WP-CLI (wp i18n make-pot) and GNU gettext (brew install gettext). Run it where `wp` runs —
+# inside the PHP container for a containerised setup. Run from anywhere; paths are repo-relative.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+shopt -s nullglob
+
+mode="${1:-update}"
+case "$mode" in update|compile) ;; *) echo "usage: bin/translate [compile]" >&2; exit 2 ;; esac
+command -v msgfmt >/dev/null || { echo "translate: msgfmt not found (brew install gettext)" >&2; exit 1; }
+[[ "$mode" == compile ]] || command -v wp >/dev/null || { echo "translate: wp (WP-CLI) not found" >&2; exit 1; }
+
+# component <pot> <source-root> <po-glob> [make-pot --include list]
+component() {
+    local pot="$1" root="$2" pos="$3" include="${4:-}" domain po
+    domain="$(basename "$pot" .pot)"
+    if [[ "$mode" == update ]]; then
+        local args=(--domain="$domain" --slug="$domain")
+        [[ -n "$include" ]] && args+=(--include="$include")
+        wp i18n make-pot "$root" "$pot" "${args[@]}" --skip-audit --quiet
+        # shellcheck disable=SC2086  # $pos is a glob on purpose
+        for po in $pos; do
+            msgmerge --update --no-fuzzy-matching --backup=none --quiet "$po" "$pot"
+            echo "✓ $po merged"
+        done
+    else
+        # shellcheck disable=SC2086
+        for po in $pos; do
+            msgfmt --check -o "${po%.po}.mo" "$po"
+            echo "✓ ${po%.po}.mo"
+        done
+    fi
+}
+
+for pot in wp-content/themes/*/resources/lang/*.pot; do
+    lang_dir="$(dirname "$pot")"
+    # --include must list theme.json and patterns too, or block titles and pattern headers never
+    # reach the POT (they are not in app/ or resources/).
+    component "$pot" "$(dirname "$(dirname "$lang_dir")")" "$lang_dir/*.po" "theme.json,patterns,app,resources"
+done
+
+for pot in wp-content/mu-plugins/*/lang/*.pot; do
+    lang_dir="$(dirname "$pot")"
+    component "$pot" "$(dirname "$lang_dir")" "$lang_dir/$(basename "$pot" .pot)-*.po"
+done
