@@ -265,7 +265,8 @@ The `PreToolUse` hook (`deploy-guard.sh`) lets `bin/deploy` through and blocks a
 mentions `ssh|scp|sftp|rsync|lftp|sshpass|ftp|ssh-keygen|ssh-add`, names the config folder
 `~/.config/<slug>`, a dedicated key `~/.ssh/<slug>_*` or a legacy `.env` (whatever the verb — `cat`,
 `grep`, `source`, `cp`), or names a deploy host read from the confs (never printed). A chained
-`bin/deploy …; cat …` is not let through as a `bin/deploy` call. Over-approximating is correct: blocking an innocent `grep rsync` costs one retry, a side door
+`bin/deploy …; cat …` is not let through as a `bin/deploy` call — nor is a multi-line one: in a bash
+regex `[^…]` matches a newline, so `bin/deploy x⏎ssh host` would otherwise pass as a bare call. Over-approximating is correct: blocking an innocent `grep rsync` costs one retry, a side door
 costs a production database.
 
 Corollary for migration scripts (`content-migrations.md`): give them a `--staging`-style flag that

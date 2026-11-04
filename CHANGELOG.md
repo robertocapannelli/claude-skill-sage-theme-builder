@@ -2,6 +2,14 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 4.0.1 — 2026-11-04
+
+- Fix `assets/claude/hooks/deploy-guard.sh`: a multi-line command starting with `bin/deploy` (newline
+  or carriage return followed by a second command) was let through as a bare wrapper call, because
+  `[^…]` in a bash regex matches a newline. Multi-line commands now fall through every check; `(` `)`
+  are excluded from the allowed arguments too.
+- `references/remote-environments.md`: the guard section documents the multi-line case.
+
 ## 4.0.0 — 2026-10-25
 
 **Breaking: the main language is asked, not assumed. Italian is no longer a mandatory catalog.**

@@ -24,7 +24,10 @@ conf_dir="$HOME/.config/${slug:-__none__}"
 
 # 1. The wrapper itself is allowed through (its dangerous commands are gated by `ask` rules and
 #    by confirmation flags in the code). Only a bare invocation: no chaining, no redirection.
-if [[ "$cmd" =~ ^[[:space:]]*(\./)?bin/deploy([[:space:]][^\;\&\|\<\>\`\$]*)?$ ]]; then
+#    A newline or carriage return would chain a second command past the regex ([^…] matches them),
+#    so a multi-line command is never treated as a bare bin/deploy call.
+if [[ "$cmd" != *$'\n'* && "$cmd" != *$'\r'* ]] \
+    && [[ "$cmd" =~ ^[[:space:]]*(\./)?bin/deploy([[:space:]][^\;\&\|\<\>\`\$\(\)]*)?$ ]]; then
     exit 0
 fi
 
