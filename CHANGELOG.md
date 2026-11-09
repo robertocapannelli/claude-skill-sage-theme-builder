@@ -2,6 +2,14 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 4.2.0 — 2026-11-09
+
+- Kickoff asks whether the site carries the agency/developer signature (wording, name, link);
+  `project-kickoff.md` → *Agency signature*: own last line of the main footer, fixed copy outside
+  gettext and machine translation, never on landing/conversion layouts, symbol icons from the
+  registry with an `sr-only` word. Listed in `i18n.md` as not translated; Definition of done and
+  kickoff checklist updated.
+
 ## 4.1.0 — 2026-11-09
 
 - New `references/performance.md`: measure with a pinned Lighthouse against production (local runs

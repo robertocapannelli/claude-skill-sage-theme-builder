@@ -13,7 +13,7 @@ description: >-
   real project on disk.
 allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
 metadata:
-  version: "4.1.0"
+  version: "4.2.0"
 ---
 
 # Sage Theme Builder
@@ -115,7 +115,7 @@ overwrite nothing; the login logo is the item most often missed on an existing t
 `grep -rn login_enqueue_scripts app/`). On a new theme, **ask for the WordPress theme name first** and confirm the slug
 derived from it (folder, `style.css` with `Update URI: false`, block namespace, prefixes); then ask for git remote and branch → `git init` + `origin`; ask for the environment data
 → copy `bin/deploy` (set `PROJECT_SLUG`) and the conf templates, `bin/deploy init`, `key-setup` per environment, the user fills `~/.config/<slug>/*.conf`, `check-env`; copy `.claude/settings.json` and the guard hook from this
-skill's `assets/`; ask the site's **main language** (and any others) → catalogs, `WPLANG`, `bin/translate*`, unless it is English; ask for the company logo; on a site built from scratch, ask for the admin username
+skill's `assets/`; ask the site's **main language** (and any others) → catalogs, `WPLANG`, `bin/translate*`, unless it is English; ask for the company logo; ask whether the footer carries the **agency signature** (wording, name, link); on a site built from scratch, ask for the admin username
 and email, install, remind to change the password. → `project-kickoff.md`
 
 **1 — Recon.** Read `composer.json`, `package.json`, `vite.config.js`, `app/setup.php`,
@@ -212,7 +212,7 @@ Read this table first whenever something "doesn't show up but throws no error".
 
 | Read this | When |
 |---|---|
-| `references/project-kickoff.md` | New project: git + remote, deploy config outside the repo (`~/.config/<slug>/`), SSH keys, guard rails, first admin, logo |
+| `references/project-kickoff.md` | New project: git + remote, deploy config outside the repo (`~/.config/<slug>/`), SSH keys, guard rails, first admin, logo, agency signature |
 | `references/architecture.md` | Project structure, bootstrap, two bundlers, theme↔mu-plugin boundary, composers, escaping |
 | `references/design-to-blade.md` | Figma/HTML → tokens → Blade; Tailwind v4 `@theme`, `theme(static)`, `@source`, self-hosted fonts |
 | `references/navigation.md` | WP menus, no-menu placeholder, offcanvas, normalized menu reader |
@@ -246,6 +246,8 @@ Read this table first whenever something "doesn't show up but throws no error".
       `bin/deploy check-env` clean and shown to the user; no legacy `.env` (or `migrate-env` run).
 - [ ] New site only: admin username/email asked (not `admin`), password-change reminder given.
 - [ ] The login screen shows the company logo.
+- [ ] Agency signature asked; if wanted, it is the footer's last line, fixed copy outside gettext and
+      machine translation, and absent from landing/conversion layouts.
 - [ ] Design tokens live only in `@theme`; `theme.json` is generated, not hand-edited; `theme(static)`
       and `@source` are in place.
 - [ ] Design reproduced faithfully with semantic Blade; no logic in views.

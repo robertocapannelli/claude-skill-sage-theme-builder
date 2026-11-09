@@ -229,6 +229,25 @@ already contain it, save it as `resources/images/logo.svg`, and wire the login s
 light surface then need a dark background or a second variant. Raster logos ship as WebP at display
 size (`performance.md`).
 
+## 6b. Agency signature
+
+Ask whether the site carries the signature of the agency or developer who built it — and if so the
+exact wording, the name and the link (e.g. "Crafted with ♥ by Acme Studio" → `https://example.com`).
+Never assume there is none, and never invent one. Then:
+
+- **Where:** the main footer only, on its **own last line**, aligned with the copyright. Squeezed into
+  the legal bar between the policy links and the language switcher it crowds that row; centred under
+  a left-aligned footer it floats off the grid.
+- **Not on conversion layouts:** paid landing pages and any stripped-down layout with its own footer
+  stay without it — every outbound link there competes with the form.
+- **Fixed copy, not a string:** the signature reads the same in every language, so it is written
+  literally in the view, outside gettext, and excluded from machine translation (Weglot:
+  `data-wg-notranslate` on the element **and** on its `<a>`; other plugins: their equivalent). It is
+  not paid words and must not be translated into something the agency never wrote.
+- **Link:** external, `target="_blank" rel="noopener"`, in the footer's muted link colour.
+- **A symbol in place of a word** (a heart for "love") comes from the icon registry as a UI icon, not
+  pasted SVG, with the word kept as `sr-only` text so a screen reader reads the full sentence.
+
 ## 7. Hosting facts and content provenance
 
 - **Hosting:** ask for each remote environment whether it has SSH, SFTP or neither, its PHP and
@@ -256,3 +275,4 @@ size (`performance.md`).
 - [ ] New site only: admin user and email asked, never `admin`; password-change reminder given.
 - [ ] Main language asked and recorded; if not English: its catalogs for theme and mu-plugin exist and `WPLANG` is set; any extra language asked; `translate:check` wired.
 - [ ] Logo in `resources/images/`, login screen branded.
+- [ ] Agency signature asked; if wanted, on its own last footer line, untranslated, absent from landing layouts.
