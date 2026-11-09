@@ -106,9 +106,9 @@ editor has no equivalent separation and needs the JS counterpart described in
 
 ## 404 (always present)
 
-Ship a `404.blade.php`. Its **tone adapts to the site's sector/brand** — the skill infers it from the
-design and industry, it does not hardcode jokes. A playful line fits a consumer brand; a sober,
-helpful message fits a law firm or a funeral service. Regardless of tone, a 404 must:
+Ship a `404.blade.php`. Its **tone adapts to the site's brand** — the skill infers it from the
+design and the existing copy, it does not hardcode jokes. A playful brand gets a playful line; a
+sober brand gets a sober, helpful message. Regardless of tone, a 404 must:
 
 - Explain the page wasn't found, in the site's voice.
 - Offer a way forward: link home, a search field, and/or key sections.

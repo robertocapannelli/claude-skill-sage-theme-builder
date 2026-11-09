@@ -350,7 +350,7 @@ changes each one. If you cannot name it, the block is not done.
 
 Name a block after **the shape of the section**, never after the page content it happens to show.
 `split-stats` (text + CTA on the left, statistics on the right) survives being reused; `home-numbers`
-— named after the service it advertised on the home page — lied the day another page reused the same
+— named after the page it first appeared on — lied the day another page reused the same
 pattern. A wrong name is not cosmetic: renaming a block is a database migration
 (`content-migrations.md`), because `glob()` registration has no alias or deprecation path.
 
@@ -463,7 +463,7 @@ consistent** — a codebase with both is a codebase where nobody knows where the
 ## When a STATIC block is right instead
 
 Use `save()` returning markup (no server render) only when **all** of these hold: content is purely
-static, needs no server-side data, computes no JSON-LD, and the client benefits from markup frozen
+static, needs no server-side data, computes no JSON-LD, and the site benefits from markup frozen
 into `post_content` so it survives the theme being removed. Otherwise dynamic wins — restyling,
 dynamic data and server-rendered schema all depend on it. Document the choice per block.
 

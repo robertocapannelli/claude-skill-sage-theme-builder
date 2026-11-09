@@ -7,13 +7,11 @@ description: >-
   match the front end, post meta and settings without ACF, schema.org JSON-LD, theme or block tests,
   renaming a block/CPT/option in an existing site, deciding what belongs in the theme versus a
   mu-plugin, starting a new WordPress project (git remote, deploy config for staging/production, first
-  admin user), deploying to staging or production, or branding the wp-login screen. Also on Italian
-  phrasings ("tema Sage", "nuovo sito WordPress", "fammi un blocco Gutenberg", "l'anteprima
-  nell'editor non torna", "rinomina il blocco", "deploy in staging", "metti online"). Runs against a
+  admin user), deploying to staging or production, or branding the wp-login screen. Runs against a
   real project on disk.
 allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
 metadata:
-  version: "4.2.0"
+  version: "4.2.1"
 ---
 
 # Sage Theme Builder
@@ -94,11 +92,11 @@ architecture, different build commands.
 12. **Users are the owner's.** On a site built from scratch, ask which admin username (never `admin`)
    and email to create, and remind the user to change the generated password. On an existing site,
    never create or change users unless asked.
-13. **The login screen carries the company logo**, never the WordPress one
+13. **The login screen carries the site logo**, never the WordPress one
    (`references/login-branding.md`).
 14. **The codebase is English; the site's main language lives in the catalog.** Code, comments,
    identifiers, commit messages and every source string — including `block.json` titles and attribute
-   defaults — are English, inside `__()`/`_x()` with a **literal** text domain, whatever the client's
+   defaults — are English, inside `__()`/`_x()` with a **literal** text domain, whatever the site's
    language. The main language (asked at kickoff, never assumed) has its catalog for theme and
    mu-plugin and the site locale set; with English as main language no catalog is needed. Other
    languages on request; no untranslated entry ships. When converting existing strings, the
@@ -115,7 +113,7 @@ overwrite nothing; the login logo is the item most often missed on an existing t
 `grep -rn login_enqueue_scripts app/`). On a new theme, **ask for the WordPress theme name first** and confirm the slug
 derived from it (folder, `style.css` with `Update URI: false`, block namespace, prefixes); then ask for git remote and branch → `git init` + `origin`; ask for the environment data
 → copy `bin/deploy` (set `PROJECT_SLUG`) and the conf templates, `bin/deploy init`, `key-setup` per environment, the user fills `~/.config/<slug>/*.conf`, `check-env`; copy `.claude/settings.json` and the guard hook from this
-skill's `assets/`; ask the site's **main language** (and any others) → catalogs, `WPLANG`, `bin/translate*`, unless it is English; ask for the company logo; ask whether the footer carries the **agency signature** (wording, name, link); on a site built from scratch, ask for the admin username
+skill's `assets/`; ask the site's **main language** (and any others) → catalogs, `WPLANG`, `bin/translate*`, unless it is English; ask for the site logo; ask whether the footer carries a **builder credit** (wording, name, link); on a site built from scratch, ask for the admin username
 and email, install, remind to change the password. → `project-kickoff.md`
 
 **1 — Recon.** Read `composer.json`, `package.json`, `vite.config.js`, `app/setup.php`,
@@ -131,7 +129,7 @@ can fetch yourself.
 a view.
 
 **4 — Templates, navigation & login.** Archives and singles as Blade (never blocks), a 404 in the site's
-voice, dynamic menus with an admin-only placeholder and an accessible offcanvas, the company logo on
+voice, dynamic menus with an admin-only placeholder and an accessible offcanvas, the site logo on
 the login screen. → `templates.md`, `navigation.md`, `login-branding.md`
 
 **5 — Native blocks.** One folder per block, `save: () => null`, `<ServerSideRender>` as the canvas
@@ -212,7 +210,7 @@ Read this table first whenever something "doesn't show up but throws no error".
 
 | Read this | When |
 |---|---|
-| `references/project-kickoff.md` | New project: git + remote, deploy config outside the repo (`~/.config/<slug>/`), SSH keys, guard rails, first admin, logo, agency signature |
+| `references/project-kickoff.md` | New project: git + remote, deploy config outside the repo (`~/.config/<slug>/`), SSH keys, guard rails, first admin, logo, builder credit |
 | `references/architecture.md` | Project structure, bootstrap, two bundlers, theme↔mu-plugin boundary, composers, escaping |
 | `references/design-to-blade.md` | Figma/HTML → tokens → Blade; Tailwind v4 `@theme`, `theme(static)`, `@source`, self-hosted fonts |
 | `references/navigation.md` | WP menus, no-menu placeholder, offcanvas, normalized menu reader |
@@ -227,7 +225,7 @@ Read this table first whenever something "doesn't show up but throws no error".
 | `references/i18n.md` | English-only codebase, main-language catalog, `WPLANG`, `bin/translate`, editor strings via `setLocaleData`, block defaults, mass-conversion check |
 | `references/plugin-interop.md` | Optional-plugin degradation, `the_content` priorities, WP-CLI resave trap |
 | `references/remote-environments.md` | `bin/deploy`: build-then-upload, staging vs production gates, ssh/sftp |
-| `references/login-branding.md` | Company logo on `wp-login.php` |
+| `references/login-branding.md` | Site logo on `wp-login.php` |
 | `references/project-memory.md` | Writing the project's CLAUDE.md as a deliverable |
 | `references/acf-usage.md` | Only for projects that already have ACF — including how to get off it |
 | `references/performance.md` | Measuring on production, the image helper, sizes/quality, CF7 + reCAPTCHA and core block CSS on demand, page cache |
@@ -245,8 +243,8 @@ Read this table first whenever something "doesn't show up but throws no error".
       `production.conf`, `local.conf` (600) filled by the user; dedicated keys created with `key-setup`;
       `bin/deploy check-env` clean and shown to the user; no legacy `.env` (or `migrate-env` run).
 - [ ] New site only: admin username/email asked (not `admin`), password-change reminder given.
-- [ ] The login screen shows the company logo.
-- [ ] Agency signature asked; if wanted, it is the footer's last line, fixed copy outside gettext and
+- [ ] The login screen shows the site logo.
+- [ ] Builder credit asked; if wanted, it is the footer's last line, fixed copy outside gettext and
       machine translation, and absent from landing/conversion layouts.
 - [ ] Design tokens live only in `@theme`; `theme.json` is generated, not hand-edited; `theme(static)`
       and `@source` are in place.
@@ -257,7 +255,7 @@ Read this table first whenever something "doesn't show up but throws no error".
 - [ ] The content model (CPTs, meta, settings) lives in a mu-plugin, with `custom-fields` where meta is
       edited from the editor.
 - [ ] Navigation is dynamic with an admin-only placeholder and an accessible offcanvas.
-- [ ] Archives and singles are Blade templates; a 404 exists with sector-appropriate tone.
+- [ ] Archives and singles are Blade templates; a 404 exists with a brand-appropriate tone.
 - [ ] Every page emits a complete, valid schema.org graph; `title`/description/canonical left to WP +
       any SEO plugin.
 - [ ] The theme renders fully with **zero plugins active**; optional integrations degrade to nothing.

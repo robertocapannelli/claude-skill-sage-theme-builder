@@ -105,7 +105,7 @@ site is not FSE, and an explicit `load_textdomain()` (Sage does not load transla
 
 ## The theme ↔ mu-plugin boundary
 
-Decide with one question: **"Would this still need to exist if the client switched themes?"**
+Decide with one question: **"Would this still need to exist if the site switched themes?"**
 
 | Concern | Lives in | Why |
 |---|---|---|
@@ -167,7 +167,7 @@ does not exist yet, so chrome never renders a broken link on a fresh install.
 ## Conventions
 
 - **All code, comments, identifiers, commit messages and source strings in English**, regardless of
-  the client's language — mandatory. Every UI string goes through a translation function (literal text
+  the site's language — mandatory. Every UI string goes through a translation function (literal text
   domain) and has its translation in the project's catalogs: the site's main language unless it is
   English, other languages on request (`i18n.md`).
 - **Escaping is context-driven — there is no one-size function.** Escape at the point of output:

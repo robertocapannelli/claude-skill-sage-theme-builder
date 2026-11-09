@@ -224,7 +224,7 @@ production is fine to show what would change.
 - **`sftp`** — for hosting without a shell: `lftp mirror --reverse` over the same SSH connection. No
   remote `wp-cli`: no DB backup, no `acorn optimize` — the script says so, and the user clears caches
   from the hosting panel. Requires `lftp` locally.
-- **Neither** (FTP or the cPanel File Manager only, common on Italian shared hosting): `bin/deploy`
+- **Neither** (FTP or the cPanel File Manager only, common on budget shared hosting): `bin/deploy`
   cannot reach that environment. Claude builds and hands over a package with the complete file list,
   new files marked; the user uploads. See `go-live.md`.
 
@@ -239,7 +239,7 @@ Both transports authenticate **only with SSH keys**, and only with the project's
   `PasswordAuthentication=no`, `KbdInteractiveAuthentication=no`: a missing key **fails in seconds**
   instead of hanging on a prompt the agent cannot answer.
 - **Why not the agent's keys.** With them ssh offers every identity it holds; a personal key that
-  also opens other clients' servers may be the one that gets in, and neither the log nor the hook can
+  also opens other projects' servers may be the one that gets in, and neither the log nor the hook can
   say which. A dedicated key is revocable per project and environment and can be restricted on the
   server (`from=`, a forced command). The price is one `key-setup` and one paste per environment.
 - The key has no passphrase by default, because nothing can type one mid-deploy. `--passphrase` makes

@@ -18,7 +18,7 @@ add_action('after_setup_theme', function () {
 });
 ```
 Do **not** print `<title>`, meta description, canonical, or OG/Twitter tags from the theme. If a site
-has no SEO plugin and the client wants meta descriptions, add them via a small **mu-plugin**, not the
+has no SEO plugin and needs meta descriptions, add them via a small **mu-plugin**, not the
 theme — keeps the theme purely presentational and lets the plugin layer remain swappable.
 
 ## schema.org (always emit, full graph)
@@ -116,7 +116,7 @@ drop the node.
 
 ## Type cheat-sheet (match to the project)
 - E-commerce / product pages → `Product` + `Offer` (+ `AggregateRating`, `Review` if present).
-- Local business / agency site → `LocalBusiness` (or subtype) with address, geo, openingHours.
+- Business with a physical location → `LocalBusiness` (or subtype) with address, geo, openingHours.
 - Services → `Service` / `ProfessionalService`.
 - Blog / editorial → `Article`.
 - Navigation → `BreadcrumbList`.
@@ -148,7 +148,7 @@ and cheap:
 - Generate from the real content, cache in a transient, invalidate on `save_post`.
 - Open `robots.txt` to the AI crawlers you want to allow, in the same place.
 - ⚠️ **This is the worst place to bypass a canonical accessor.** A value the site is not supposed to
-  expose — a client under NDA, a draft price — leaks here precisely because the file is explicitly
+  expose — a name under NDA, a draft price — leaks here precisely because the file is explicitly
   opened to crawlers. Every read goes through the one method that owns the rule
   (`plugin-interop.md`), guarded with `class_exists()` when the method lives in the theme.
 

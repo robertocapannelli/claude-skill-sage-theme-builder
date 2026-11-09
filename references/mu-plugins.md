@@ -4,11 +4,11 @@ All non-presentation logic lives in a project mu-plugin, never in the theme. Thi
 swappable and the content model stable.
 
 ## Why mu-plugin (vs regular plugin)
-- **Always active** — can't be accidentally deactivated by a client, and survives theme switches.
+- **Always active** — can't be accidentally deactivated from wp-admin, and survives theme switches.
 - Right home for the **content model** (CPTs, taxonomies) and **business logic** the site depends on.
 - Trade-off: mu-plugins don't show update/deactivate UI and the loader auto-includes only PHP files in
   the mu-plugins **root**. For anything with structure (classes, assets), use a **loader file +
-  subdirectory** pattern below. If the client needs to toggle it, a regular plugin is acceptable — but
+  subdirectory** pattern below. If site admins need to toggle it, a regular plugin is acceptable — but
   the boundary rule (no logic in the theme) is the non-negotiable part.
 
 ## Loader + subdirectory pattern

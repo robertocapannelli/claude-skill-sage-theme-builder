@@ -51,7 +51,7 @@ With no programmatic access, Claude prepares, the user uploads. Production is st
 - **Maintenance window on the real domain** when no test copy is possible: a static 503 page from
   `.htaccess` with a bypass cookie for the people testing. Keep the host's own blocks (e.g.
   its PHP-handler block) and drop the old site's rewrite rules (an old importer's `/en/` rules sent
-  English URLs to Italian pages).
+  English URLs to pages in another language).
 - **WAF hosts (BitNinja and friends):** scripted requests plus probes of paths such as `/wp-config.php`
   earn the IP a CAPTCHA a script cannot pass. Keep checks few, targeted, from a browser UA; never probe
   sensitive paths.

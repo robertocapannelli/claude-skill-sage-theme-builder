@@ -1,7 +1,7 @@
-# Plugins that come with the client
+# Common third-party plugins
 
 `plugin-interop.md` is the general rule (optional, detected at runtime, degrade to nothing). This file
-is the field notes for the plugins Italian SMB sites keep bringing: a multilingual SaaS (Weglot), a
+is the field notes for plugins that sites commonly arrive with: a multilingual SaaS (Weglot), a
 consent manager (Cookiebot), Google Site Kit, Contact Form 7 + reCAPTCHA, Rank Math. Each section is a
 trap that cost time once. Every integration still lives behind `function_exists`/`class_exists`.
 
@@ -71,7 +71,7 @@ a different layer: code strings → the main language.
 - reCAPTCHA v3 through CF7's own integration; "ReCaptcha v2 for Contact Form 7" disables v3 — never
   both. Hiding the badge requires the reCAPTCHA notice text in the form.
 - Load CF7 and reCAPTCHA **only where a form renders** (`performance.md`).
-- Never submit test forms to the client's real recipient; after a `db pull`, deactivate SMTP/mailer
+- Never submit test forms to the site's real recipient; after a `db pull`, deactivate SMTP/mailer
   plugins locally (a Gmail API mailer bypasses the local mail catcher).
 - Check PHP parity: recent CF7 releases require PHP 8.3; a lower local PHP takes the whole site to a
   500.
@@ -80,7 +80,7 @@ a different layer: code strings → the main language.
 
 - Keeps title, meta, OG, robots, sitemap; the theme turns its JSON-LD off when it emits its own graph
   (`schema-seo.md`).
-- **Redirects the client manages alone** → Rank Math's Redirections module, seeded from a CSV by a
+- **Redirects managed from wp-admin** → Rank Math's Redirections module, seeded from a CSV by a
   migration script, not code. Its `url_to` is absolute: a search-replace between environments must
   include the `rank_math_*` tables.
 - Map old URLs from Search Console (16 months) rather than from the Wayback Machine alone.

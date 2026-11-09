@@ -89,7 +89,7 @@ Assume you will need a repair script for the databases already damaged before yo
 
 ## One canonical accessor for context-sensitive data
 
-If a business rule says a value is sometimes not shown — a client name under NDA, a price only for
+If a business rule says a value is sometimes not shown — a name under NDA, a price only for
 logged-in users — that rule lives in **one** method, and every consumer calls it. Including:
 
 - templates and blocks,
@@ -101,8 +101,8 @@ When a mu-plugin needs an accessor that lives in the theme, call it under `class
 mu-plugin must survive a theme switch:
 
 ```php
-$client = class_exists(\App\Support\Project::class)
-    ? \App\Support\Project::client($id)
+$name = class_exists(\App\Support\Project::class)
+    ? \App\Support\Project::publicName($id)
     : '';
 ```
 

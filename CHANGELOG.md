@@ -2,6 +2,23 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 4.2.1 — 2026-11-09
+
+Context-neutral wording: the skill serves personal, commercial and third-party projects alike.
+
+- No "client" as a stakeholder anywhere: sentences now talk about the site, its editors, the user or
+  the project (`acf-usage`, `architecture`, `common-plugins`, `content-migrations`, `i18n`,
+  `mu-plugins`, `native-blocks`, `navigation`, `plugin-interop`, `project-kickoff`,
+  `remote-environments`, `schema-seo`, `SKILL.md`).
+- "Agency signature" renamed **builder credit** (kickoff step 6b, i18n, checklists); "company logo"
+  is now the site logo.
+- No industry examples: the 404 tone follows the site's brand, not its sector; the README and evals
+  no longer name a business type.
+- Everything in English: Italian trigger phrasings dropped from the description and README, evals
+  translated, `.gitignore` comment translated; the example non-English locale is `de_DE` instead of
+  `it_IT`, and no reference assumes an Italian site or host.
+- Block-naming example replaced by the fictitious `home-numbers`.
+
 ## 4.2.0 — 2026-11-09
 
 - Kickoff asks whether the site carries the agency/developer signature (wording, name, link);
@@ -35,7 +52,7 @@ Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 - `block-editor-parity.md`: no Tailwind in the sidebar (shared `_ui.js` primitives), SVG fill in
   `Button`, one icon registry for PHP and editor, canvas iframe `defaultView`.
 - `content-migrations.md`: no `get_page_by_path()` in lookups, menus before trashing pages,
-  `docker exec -e` for dry-run flags, new scripts for later client edits.
+  `docker exec -e` for dry-run flags, new scripts for later wp-admin edits.
 - `project-kickoff.md`: light/dark logo variant; hosting facts (SSH/SFTP, PHP, DB, WAF) and photo
   provenance asked at kickoff.
 - `SKILL.md`: 14 new silent traps, three references in the map, two Definition-of-done items.

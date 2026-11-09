@@ -1,6 +1,6 @@
 # Login screen branding
 
-`/wp-login.php` (and every `/wp-admin` redirect to it) must show **the site's company logo**, never the
+`/wp-login.php` (and every `/wp-admin` redirect to it) must show **the site's logo**, never the
 WordPress logo — on every project, from the kickoff (`project-kickoff.md`). It is presentation, so it
 lives in the theme: `app/login.php`, added to the bootstrap manifest in `functions.php`
 (`collect(['setup', 'filters', 'blocks', 'schema', 'login'])`).

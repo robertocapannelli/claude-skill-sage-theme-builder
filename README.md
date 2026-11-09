@@ -70,13 +70,11 @@ When updating, remove the previous version of the skill first to avoid a name co
 
 The skill activates on its own when a request matches — no command needed. For example:
 
-- "Start a new WordPress site with Sage for a furniture company."
+- "Start a new WordPress site with Sage."
 - "Turn this section into a Gutenberg block editable from the back end." + HTML
 - "The block preview in the editor doesn't match the front end."
 - "Rename the `home-numbers` block to `split-stats` on every environment."
 - "Deploy to staging." / "Staging looks good, deploy to production."
-
-Italian phrasings work too ("fammi un blocco Gutenberg", "deploy in staging").
 
 ## Repository layout
 
@@ -98,5 +96,5 @@ The version lives in `SKILL.md` under `metadata.version` (semver) and each relea
 ## Contributing
 
 Issues and pull requests are welcome. Keep examples generic (`acme`, `mytheme`, `example.com`): no
-client names, real domains, hosts or credentials — `scripts/audit-public.sh` must pass. Maintainer
+real names of people, companies or projects, real domains, hosts or credentials — `scripts/audit-public.sh` must pass. Maintainer
 rules are in [CLAUDE.md](CLAUDE.md).

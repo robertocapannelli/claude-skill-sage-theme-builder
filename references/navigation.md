@@ -18,7 +18,7 @@ add_action('after_setup_theme', function () {
 ```
 
 ### Placeholder when no menu is assigned
-If a location has no menu, output a clear admin-only placeholder instead of nothing, so the client knows
+If a location has no menu, output a clear admin-only placeholder instead of nothing, so whoever edits the site knows
 what to do:
 
 ```blade

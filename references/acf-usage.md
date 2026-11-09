@@ -25,7 +25,7 @@ deactivated. Therefore:
 ## Good fits for ACF
 - **Post/page meta** that isn't block content (e.g. a "reading time override", an SEO sidebar value,
   a per-page hero variant flag).
-- **Options pages** for global, non-content settings (company phone, social links, default OG image)
+- **Options pages** for global, non-content settings (contact phone, social links, default OG image)
   consumed across templates.
 - **Complex repeaters/relationships on CPTs** edited outside the block canvas (e.g. a "Team Member"
   CPT with structured fields), especially when an editor expects a classic meta-box UX.
@@ -66,7 +66,7 @@ only way to have automatic, continuous versioning *and* admin editability at the
 PHP/JSON export exists too, but it's a one-shot dump you'd re-import by hand — strictly worse; ignore it.)
 
 **Choosing between them:**
-- Field definitions must be changeable from the admin (client/editor owns them, or you want fast
+- Field definitions must be changeable from the admin (site editors own them, or you want fast
   iteration without a deploy) → **Local JSON**.
 - Fields are purely dev-controlled and must never be touched from admin → **PHP**, simpler, done.
 

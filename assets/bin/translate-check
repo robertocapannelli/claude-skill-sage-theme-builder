@@ -3,7 +3,7 @@
 # or if a catalog the site's MAIN language needs is missing.
 #
 # The main language comes from, in order:
-#   1. --main-locale=<locale>  or  MAIN_LOCALE=<locale>   (e.g. it_IT; en_US = English)
+#   1. --main-locale=<locale>  or  MAIN_LOCALE=<locale>   (e.g. de_DE; en_US = English)
 #   2. `wp option get WPLANG` when WP-CLI is available (empty = en_US)
 # English as main language needs no catalog (the source is the text). When the main language cannot
 # be determined the check still validates every catalog that exists and says so.

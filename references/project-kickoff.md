@@ -45,7 +45,7 @@ Theme Name:   Acme Studio
 Theme URI:    https://www.example.com
 Description:  Custom theme for Acme Studio, built on Sage.
 Version:      1.0.0
-Author:       <ask, or leave the agency name the user gives>
+Author:       <ask the user>
 Text Domain:  sage
 Requires PHP: 8.2
 Update URI:   false
@@ -138,7 +138,7 @@ What the confs deliberately do **not** contain:
   `wp-config.php`. There is no `*_DB_PASSWORD` or `*_SFTP_PASSWORD` key, and the packaging check
   refuses a template that adds one.
 - **No "use my usual keys".** `DEPLOY_KEY=default` is refused: with the agent's keys ssh tries every
-  identity it holds, and a personal key that also opens other clients' servers could be the one that
+  identity it holds, and a personal key that also opens other projects' servers could be the one that
   authenticates — neither the log nor the hook could tell. A dedicated key is revocable per project
   and environment and can be restricted on the server side.
 
@@ -205,7 +205,7 @@ password is never reused there.
 
 The codebase is English; the site's main language lives in a translation file (`i18n.md`). Ask:
 
-- **What is the site's main language?** Never assume it. Record the answer (locale, e.g. `it_IT`) in
+- **What is the site's main language?** Never assume it. Record the answer (locale, e.g. `de_DE`) in
   the project `CLAUDE.md`.
 - Any other language besides the main one? Each adds its own catalog from the same POT.
 
@@ -221,17 +221,17 @@ Then:
   `translate*` npm scripts and the loaders (theme `load_textdomain()`; mu-plugin `load_textdomain()`
   on `init` −100) from `i18n.md`.
 
-## 6. Company logo
+## 6. Site logo
 
-Ask for the company logo (SVG preferred, otherwise a PNG at least 640 px wide) if the design does not
+Ask for the site logo (SVG preferred, otherwise a PNG at least 640 px wide) if the design does not
 already contain it, save it as `resources/images/logo.svg`, and wire the login screen at once
 (`login-branding.md`). Note whether it is a light logo for dark backgrounds: the login page and any
 light surface then need a dark background or a second variant. Raster logos ship as WebP at display
 size (`performance.md`).
 
-## 6b. Agency signature
+## 6b. Builder credit
 
-Ask whether the site carries the signature of the agency or developer who built it — and if so the
+Ask whether the site carries a credit line for whoever built it (a person or a studio) — and if so the
 exact wording, the name and the link (e.g. "Crafted with ♥ by Acme Studio" → `https://example.com`).
 Never assume there is none, and never invent one. Then:
 
@@ -240,10 +240,10 @@ Never assume there is none, and never invent one. Then:
   a left-aligned footer it floats off the grid.
 - **Not on conversion layouts:** paid landing pages and any stripped-down layout with its own footer
   stay without it — every outbound link there competes with the form.
-- **Fixed copy, not a string:** the signature reads the same in every language, so it is written
+- **Fixed copy, not a string:** the credit reads the same in every language, so it is written
   literally in the view, outside gettext, and excluded from machine translation (Weglot:
   `data-wg-notranslate` on the element **and** on its `<a>`; other plugins: their equivalent). It is
-  not paid words and must not be translated into something the agency never wrote.
+  not paid words and must not be translated into something its author never wrote.
 - **Link:** external, `target="_blank" rel="noopener"`, in the footer's muted link colour.
 - **A symbol in place of a word** (a heart for "love") comes from the icon registry as a UI icon, not
   pasted SVG, with the word kept as `sr-only` text so a screen reader reads the full sentence.
@@ -254,9 +254,9 @@ Never assume there is none, and never invent one. Then:
   database versions, and whether a WAF sits in front. No shell means no `bin/deploy` and a manual
   hand-over (`go-live.md`); a different PHP than local breaks plugin updates. Hosting tickets are
   slow: ask now.
-- **Photos:** when building from an existing site's media library, ask the client which photos show
-  **their own** work. Libraries collect images of events or products the company did not make (a
-  rented supplier's job, a stock shot); publishing one as a case study misrepresents the client.
+- **Photos:** when building from an existing site's media library, ask the user which photos show
+  the site owner's **own** work. Libraries collect images of work the owner did not do (a
+  supplier's job, a stock shot); publishing one as their own work misrepresents the site.
   Record the excluded images in the project memory so they are never picked as a default.
 
 ## Checklist
@@ -275,4 +275,4 @@ Never assume there is none, and never invent one. Then:
 - [ ] New site only: admin user and email asked, never `admin`; password-change reminder given.
 - [ ] Main language asked and recorded; if not English: its catalogs for theme and mu-plugin exist and `WPLANG` is set; any extra language asked; `translate:check` wired.
 - [ ] Logo in `resources/images/`, login screen branded.
-- [ ] Agency signature asked; if wanted, on its own last footer line, untranslated, absent from landing layouts.
+- [ ] Builder credit asked; if wanted, on its own last footer line, untranslated, absent from landing layouts.
