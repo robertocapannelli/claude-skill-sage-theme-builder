@@ -4,6 +4,9 @@ Principle 0 says the theme depends only on WordPress + Sage. That is a design ru
 it means in practice, because "no dependency" does not mean "no interaction". Plugins filter your
 content, own data you display, and register post types you need to list.
 
+Field notes for specific plugins (Weglot, Cookiebot, Site Kit, Contact Form 7 + reCAPTCHA, Rank Math)
+are in `common-plugins.md`.
+
 ## Degrade to nothing, never to half
 
 When an optional plugin is absent, a section that needs it renders **nothing** — no empty card, no

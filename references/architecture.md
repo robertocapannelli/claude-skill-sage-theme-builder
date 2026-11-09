@@ -176,6 +176,15 @@ does not exist yet, so chrome never renders a broken link on a fresh install.
   `wp_kses_post()` with a raw echo. `wp_kses_post()` is the right tool *only* for that last case, and
   it is the most expensive — using it on a URL is both wasteful and less safe, because it is the wrong
   escaping for the sink.
+- ⚠️ **Blade double-escapes WordPress's already-escaped strings.**
+  - Never `{{ esc_url($url) }}`: `esc_url()` turns `&` into `&#038;`, `{{ }}` escapes it again, the
+    browser gets a literal `&#038;` and every query parameter after the first lands in the fragment
+    (broken map embeds). Write `{!! esc_url($url) !!}`.
+  - Titles arrive entity-encoded (`&` → `&#038;`): `{!! wp_kses(get_the_title(), []) !!}` strips
+    markup and avoids the double encoding. Menu labels are titles too: decode once
+    (`html_entity_decode`) in the menu reader, then print with `{{ }}`.
+- **Blade pitfall:** an inline `@php(the_post())` immediately followed by a `@php … @endphp` block
+  mis-compiles ("unexpected @"). Put the call inside the block.
 - **Do not run a Laravel-preset formatter on block render templates or on mu-plugins.** It rewrites
   alternative syntax into braces and reformats concatenation, burying real changes in noise. Run it on
   `app/` and ordinary PHP.

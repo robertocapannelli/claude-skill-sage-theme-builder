@@ -2,6 +2,36 @@
 
 Versions follow `metadata.version` in `SKILL.md`. Dates are absolute.
 
+## 4.1.0 — 2026-11-09
+
+- New `references/performance.md`: measure with a pinned Lighthouse against production (local runs
+  understate byte costs); bytes before the LCP decide PSI, not render-blocking order; one image helper
+  (per-layout `sizes`, lazy by default, a single `fetchpriority=high` with
+  `wp_high_priority_element_flag(false)`, intrinsic size for theme assets); 480/640 width-only sizes
+  and quality 75; WebP logos; core block CSS on demand; CF7 + reCAPTCHA only where a form renders; no
+  LCP hidden by boot scripts; page cache without minify, purged after uploads; never
+  `image_editor_output_format` + regenerate on existing uploads.
+- New `references/common-plugins.md`: Weglot (switcher from its services, no paid words for code
+  strings, `data-wg-notranslate` never on `<a>`), Cookiebot (`data-cookieconsent="ignore"` for boot
+  scripts, iframes, no display utilities, language), Site Kit tags only in `production`, CF7 markup in
+  the repo + found by title, reCAPTCHA v3, Rank Math redirects.
+- New `references/go-live.md`: hosting with neither SSH nor SFTP (package + complete file list with new
+  files marked, upload order), first publication (collation, `.htaccess`, maintenance bypass, WAF,
+  403-as-404), go-live checklist.
+- `login-branding.md`: a light logo needs a dark page; never set `color` on `body.login`; elements to
+  brand; reuse the project's asset helper; browser check on `?loggedout=true`. Kickoff gap check greps
+  for `login_enqueue_scripts`.
+- `design-to-blade.md`: reset `--color-*`, `clamp()` dropped by the theme.json generator, `important`
+  with legacy plugin CSS, verify the generated theme.json.
+- `architecture.md`: Blade double escaping of `esc_url()` and titles; `@php(the_post())` pitfall.
+- `block-editor-parity.md`: no Tailwind in the sidebar (shared `_ui.js` primitives), SVG fill in
+  `Button`, one icon registry for PHP and editor, canvas iframe `defaultView`.
+- `content-migrations.md`: no `get_page_by_path()` in lookups, menus before trashing pages,
+  `docker exec -e` for dry-run flags, new scripts for later client edits.
+- `project-kickoff.md`: light/dark logo variant; hosting facts (SSH/SFTP, PHP, DB, WAF) and photo
+  provenance asked at kickoff.
+- `SKILL.md`: 14 new silent traps, three references in the map, two Definition-of-done items.
+
 ## 4.0.1 — 2026-11-04
 
 - Fix `assets/claude/hooks/deploy-guard.sh`: a multi-line command starting with `bin/deploy` (newline

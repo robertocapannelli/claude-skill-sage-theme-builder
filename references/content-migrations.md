@@ -230,3 +230,11 @@ instances render nothing. Two options:
       which looks exactly like a failed migration. Purge them too, and check a published URL rather
       than the editor.
 - [ ] Tracked per environment — the real risk is running it on staging and forgetting production
+- [ ] Lookups scoped to the post type: `get_posts(['post_type' => …, 'title' => …])`, never
+      `get_page_by_path()` — it also matches an attachment with the same slug, and overwriting it
+      corrupts the media item
+- [ ] Anything that trashes a page checks the menus first: trashing a page deletes its menu items
+- [ ] `docker exec` does not inherit the caller's environment: pass the dry-run flag with `-e`, or a
+      "dry run" writes to the database
+- [ ] Client edits made in wp-admin after a script was written go in a **new** numbered script that
+      describes them, never a re-capture of the old one

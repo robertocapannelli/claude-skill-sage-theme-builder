@@ -74,6 +74,20 @@ the block editor's colour picker, font sizes and font families match the design 
 Verify the mapping flags in `vite.config.js` (`disableTailwindColors`, `...Fonts`, `...FontSizes`,
 `...BorderRadius`) are `false` unless you have a reason.
 
+Catches in that generation:
+
+- ⚠️ **Reset the colour namespace.** Without it, Tailwind's 240+ default colours land in the
+  generated `theme.json` too (300 swatches in the editor picker). Open the `@theme` block with
+  `--color-*: initial;` and re-declare only the brand colours plus `white`, `black`, `transparent`,
+  `current`, `inherit`. A utility like `bg-slate-500` then stops existing: declare a token first.
+- ⚠️ **`clamp()` font sizes are dropped** by the generator. A fluid type scale belongs in the source
+  `theme.json` `typography.fontSizes` (with `fluid` values), not in `@theme`.
+- On a site that keeps legacy plugin CSS (unlayered, so it beats every layered utility), emitting
+  utilities as important — `@import "tailwindcss" theme(static) important;` — is the pragmatic fix.
+  Decide it at kickoff: it changes how every override is written afterwards.
+- Verify any `theme.json` change on the **generated** `public/build/assets/theme.json`, the file
+  WordPress actually reads.
+
 In the **source** `theme.json`, turn off every *default* and *custom* palette and size, so the only
 choices in the editor are your tokens:
 

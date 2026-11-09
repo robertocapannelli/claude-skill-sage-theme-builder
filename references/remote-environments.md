@@ -224,6 +224,9 @@ production is fine to show what would change.
 - **`sftp`** — for hosting without a shell: `lftp mirror --reverse` over the same SSH connection. No
   remote `wp-cli`: no DB backup, no `acorn optimize` — the script says so, and the user clears caches
   from the hosting panel. Requires `lftp` locally.
+- **Neither** (FTP or the cPanel File Manager only, common on Italian shared hosting): `bin/deploy`
+  cannot reach that environment. Claude builds and hands over a package with the complete file list,
+  new files marked; the user uploads. See `go-live.md`.
 
 ## Authentication: one dedicated SSH key per environment, never a password
 

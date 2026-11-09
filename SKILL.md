@@ -13,7 +13,7 @@ description: >-
   real project on disk.
 allowed-tools: Read Grep Glob Edit Write Bash(npm *) Bash(yarn *) Bash(node *) Bash(composer *) Bash(wp *) Bash(./bin/*) Bash(docker exec *) Bash(vendor/bin/*) Bash(git status*) Bash(git diff*) Bash(git log*) Bash(git init*) Bash(git remote*) Bash(git check-ignore*)
 metadata:
-  version: "4.0.1"
+  version: "4.1.0"
 ---
 
 # Sage Theme Builder
@@ -67,8 +67,9 @@ architecture, different build commands.
    theme emits its own graph unconditionally (duplication with an SEO plugin accepted by design) and
    does **not** own `<title>`, meta description or canonical. See `references/schema-seo.md`.
 7. **Lightweight by construction.** Server-rendered front end, no React shipped to visitors,
-   self-hosted fonts, only the CSS/JS actually used. Performance is a design constraint, not a later
-   pass.
+   self-hosted fonts, only the CSS/JS actually used, one image helper with per-layout `sizes`.
+   Performance is a design constraint, not a later pass, and it is measured on production, where
+   bytes before the hero decide the score. See `references/performance.md`.
 8. **Everything visible on the front end is editable from the block's controls.** Every text, image,
    link, icon and repeated item a visitor sees maps to an attribute with a control; no visible literal
    in `render.php`. See `references/native-blocks.md` → *Everything visible is editable*.
@@ -110,7 +111,8 @@ Work through these in order; skip ahead when the request is scoped to one part (
 testimonial block" → Phase 1 check, then Phase 5).
 
 **0 — Kickoff** (new project; on an existing one, a gap check after recon — add what is missing,
-overwrite nothing). On a new theme, **ask for the WordPress theme name first** and confirm the slug
+overwrite nothing; the login logo is the item most often missed on an existing theme:
+`grep -rn login_enqueue_scripts app/`). On a new theme, **ask for the WordPress theme name first** and confirm the slug
 derived from it (folder, `style.css` with `Update URI: false`, block namespace, prefixes); then ask for git remote and branch → `git init` + `origin`; ask for the environment data
 → copy `bin/deploy` (set `PROJECT_SLUG`) and the conf templates, `bin/deploy init`, `key-setup` per environment, the user fills `~/.config/<slug>/*.conf`, `check-env`; copy `.claude/settings.json` and the guard hook from this
 skill's `assets/`; ask the site's **main language** (and any others) → catalogs, `WPLANG`, `bin/translate*`, unless it is English; ask for the company logo; on a site built from scratch, ask for the admin username
@@ -163,7 +165,10 @@ components (plugins, uploads, database) and confirm, then run with `--confirm-bo
 Afterwards: `bin/deploy staging push` (it backs up, then builds) and report the staging URL **and the
 backup id with its rollback command**. Production
 only when the user asks for it explicitly: `bin/deploy production push --dry-run` to show the diff,
-then `--confirm-production=<slug>`. Commit only if asked. → `remote-environments.md`
+then `--confirm-production=<slug>`. Commit only if asked. A host with no SSH and no SFTP: build,
+hand over the package with every file listed (new ones marked), the user uploads. Going live follows
+the checklist in `go-live.md`, then PageSpeed on production (`performance.md`). →
+`remote-environments.md`, `go-live.md`
 
 ## Traps that fail silently
 
@@ -187,6 +192,20 @@ Read this table first whenever something "doesn't show up but throws no error".
 | A deploy broke the site | roll back: `bin/deploy <env> restore latest --dry-run`, confirm with the user, then `--confirm-restore=<slug>` | `remote-environments.md` |
 | Staging shows old CSS/JS, or unstyled pages after a deploy | build output is gitignored and was not rebuilt — deploy by hand instead of `bin/deploy` | `remote-environments.md` |
 | An editor can't change a text or image on the page | hard-coded in `render.php`, or an attribute with no control | `native-blocks.md` |
+| Login labels or "logged out" message pale grey on white | `color` set on `body.login` for a dark page inherits into the form card | `login-branding.md` |
+| Query parameters lost after the first, broken map embeds | `{{ esc_url() }}` escapes `&#038;` twice — use `{!! esc_url() !!}` | `architecture.md` |
+| `&#038;` visible in a title or menu label | entity-encoded WP title printed with `{{ }}` | `architecture.md` |
+| Hundreds of swatches in the editor colour picker | `@theme` without `--color-*: initial;` | `design-to-blade.md` |
+| Fluid font sizes missing in the editor | the `theme.json` generator drops `clamp()` from `@theme` | `design-to-blade.md` |
+| A seed script corrupts a media item | `get_page_by_path()` matched an attachment with the same slug | `content-migrations.md` |
+| An effect works on the front end, does nothing in the canvas | the canvas is an iframe: observers/timers from the admin `window` | `block-editor-parity.md` |
+| Line icons filled solid in the sidebar | admin `.components-button svg { fill }` beats `fill="none"` | `block-editor-parity.md` |
+| Inline boot script runs late, page stays hidden/black | consent manager auto-blocking — `data-cookieconsent="ignore"` | `common-plugins.md` |
+| A switcher's link points to the translated twin | Weglot rewrites every `<a>` without `data-wg-notranslate` on the link itself | `common-plugins.md` |
+| No analytics tag on staging, consent "untestable" | Site Kit emits tags only when environment type is `production` | `common-plugins.md` |
+| Every front-end page 500 after a manual upload | a new file left out of the hand-over list | `go-live.md` |
+| Old CSS/JS or unstyled pages after a theme upload | page cache still serves HTML pointing at old build hashes | `performance.md` |
+| PageSpeed barely moves after removing render-blocking CSS | the score is bytes before the LCP (images, reCAPTCHA), not blocking order | `performance.md` |
 | A composer boolean is always true in `@if` | zero-arg methods arrive as a lazy `InvokableComponentVariable` — invoke it | `architecture.md` |
 
 ## Reference map
@@ -211,6 +230,9 @@ Read this table first whenever something "doesn't show up but throws no error".
 | `references/login-branding.md` | Company logo on `wp-login.php` |
 | `references/project-memory.md` | Writing the project's CLAUDE.md as a deliverable |
 | `references/acf-usage.md` | Only for projects that already have ACF — including how to get off it |
+| `references/performance.md` | Measuring on production, the image helper, sizes/quality, CF7 + reCAPTCHA and core block CSS on demand, page cache |
+| `references/common-plugins.md` | Weglot, Cookiebot, Site Kit, Contact Form 7 + reCAPTCHA, Rank Math: the traps of each |
+| `references/go-live.md` | Hosting with no shell (manual package + file list), first publication, WAF, go-live checklist |
 
 **Assets to copy, not rewrite:** `assets/gitignore`, `assets/bin/deploy`, `assets/deploy-plugins.txt`, `assets/bin/translate`, `assets/bin/translate-check`, `assets/bin/block-defaults-pot.mjs`, `assets/deploy.conf.example`, `assets/deploy.local.conf.example`,
 `assets/claude/settings.json`, `assets/claude/hooks/deploy-guard.sh`.
@@ -251,3 +273,6 @@ Read this table first whenever something "doesn't show up but throws no error".
 - [ ] First deploy done with `bootstrap` after the user confirmed its plan; later ones with `push`.
 - [ ] Every deploy produced a backup; the user was given its id and the `restore` command.
 - [ ] Deployed to staging through `bin/deploy`; production untouched unless explicitly requested.
+- [ ] Views render images through the image helper; one `fetchpriority="high"` per template; CF7 and
+      reCAPTCHA load only where a form renders; PageSpeed measured on production.
+- [ ] Manual hand-overs list every file, new ones marked; the go-live checklist is done.

@@ -187,6 +187,30 @@ brand colours.** The sidebar is WordPress's UI, not the site's; a brand-coloured
 broken next to core panels and breaks when WP changes its admin theme. Style rhythm inside named panel
 classes (`.mytheme-block-panel`) rather than globally.
 
+- ⚠️ **The sidebar has no Tailwind.** Utilities written in an `edit.js` inspector render unstyled
+  there. Build every control from `@wordpress/components` primitives, gathered once in a shared
+  `blocks/_ui.js` (panel, repeater as `Card`s with ↑/↓/remove, fixed-shape group, media field with
+  *remove*, icon picker, select/toggle/range for closed sets, `preview()` wrapping
+  `<ServerSideRender>` with `urlQueryArgs: { post_id }`). Every block then reads the same.
+- ⚠️ An SVG inside a `Button` needs `style={{ fill: 'none' }}`, not `fill="none"`: the admin rule
+  `.components-button svg { fill: currentColor }` beats a presentation attribute and fills line
+  icons solid. Unselected `tertiary` buttons inherit the admin link blue: force a neutral colour in an
+  icon grid.
+- **One icon registry for both sides.** A PHP array (slug → label + 24×24 stroke path) renders the
+  front end and is printed into the editor (`window.<prefix>Icons`) for the picker, so they cannot
+  drift. An unknown slug degrades to a default icon, never to a gap — slugs live in saved attributes.
+  When a block switches from icons assigned by position to a picker, keep the old order as the
+  fallback for rows with no slug: no migration needed.
+
+## 7. Scripts that run inside the canvas
+
+The block canvas is an **iframe**. Editor code that animates or observes rendered markup (an effect
+re-applied over `<ServerSideRender>` output) must take `MutationObserver`, `matchMedia`,
+`requestAnimationFrame` and timers from `node.ownerDocument.defaultView`, not from the admin
+`window` — otherwise it observes the wrong document and nothing happens, with no error. Share the
+algorithm as a module imported by both the front-end and the editor bundle, and re-run it from a
+`MutationObserver`, because `ServerSideRender` replaces its output on every attribute change.
+
 ## Verify
 
 Open a page with one of your sections and one core block. Check, in the canvas: correct font; a custom

@@ -81,6 +81,33 @@ Notes:
 - Tune `height` to the logo's aspect ratio (a wide wordmark: ~64px; a square mark: ~120px). Colours of
   the login form are optional; the logo is not.
 - The theme renders fine without it: this is presentation, and it degrades to core's default.
+- **Reuse the project's asset helper** when it has one (e.g. an `asset_url()` that wraps
+  `Vite::asset()` in a try/catch and handles retired images) instead of the loop above, and point at
+  the logo file the header actually uses — often a WebP, not `logo.svg`/`logo.png`. A theme without
+  `add_theme_support('custom-logo')` has no Site Logo to read: skip step 1 rather than leave a branch
+  that never runs.
+
+## A light logo needs a dark page
+
+Look at the logo before writing CSS. Core's login background is light grey: a white (or white + one
+brand colour) logo disappears on it. Then the page takes the site's dark surface token, and:
+
+- **Never set `color` on `body.login`.** It inherits into the white form card and the message box,
+  and the labels and "You are now logged out" turn light grey on white. Colour only what sits on
+  the dark background: `#nav a`, `#backtoblog a`, `.privacy-policy-page-link a`, the
+  `.language-switcher` label and its secondary `.button` (core's blue outline otherwise).
+- Keep the form card core's white: every core state (errors, reset password, interim login) stays
+  legible without restyling each one.
+- Brand the primary button (`.button-primary`, hover/focus with a visible ring), the input focus
+  border, the show-password eye and the `.message`/`.notice` left border with the accent colour.
+- Copy the token values into the inline CSS with a comment naming `tokens.css`: the login page does
+  not load `app.css`, so custom properties are not available there.
+
+## Verify
+
+Open `/wp-login.php?loggedout=true` in a browser (it shows the message box as well as the form) and
+check: logo visible and centred, labels and message text dark on white, links readable on the dark
+background, language switcher (present when more than one language is installed) not WordPress blue.
 
 ## Test
 

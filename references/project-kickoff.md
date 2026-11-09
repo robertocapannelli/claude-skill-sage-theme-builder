@@ -225,7 +225,20 @@ Then:
 
 Ask for the company logo (SVG preferred, otherwise a PNG at least 640 px wide) if the design does not
 already contain it, save it as `resources/images/logo.svg`, and wire the login screen at once
-(`login-branding.md`).
+(`login-branding.md`). Note whether it is a light logo for dark backgrounds: the login page and any
+light surface then need a dark background or a second variant. Raster logos ship as WebP at display
+size (`performance.md`).
+
+## 7. Hosting facts and content provenance
+
+- **Hosting:** ask for each remote environment whether it has SSH, SFTP or neither, its PHP and
+  database versions, and whether a WAF sits in front. No shell means no `bin/deploy` and a manual
+  hand-over (`go-live.md`); a different PHP than local breaks plugin updates. Hosting tickets are
+  slow: ask now.
+- **Photos:** when building from an existing site's media library, ask the client which photos show
+  **their own** work. Libraries collect images of events or products the company did not make (a
+  rented supplier's job, a stock shot); publishing one as a case study misrepresents the client.
+  Record the excluded images in the project memory so they are never picked as a default.
 
 ## Checklist
 
